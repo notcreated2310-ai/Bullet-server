@@ -4,7 +4,8 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "echo 'no build step'"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -12,5 +13,6 @@
   },
   "engines": {
     "node": "18.x"
-  }
+  },
+  "packageManager": "npm@9.0.0"
 }
