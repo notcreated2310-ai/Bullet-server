@@ -18,7 +18,7 @@ app.get("/health", (req, res) => res.send("ok"));
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// Chat endpoint
+// ---------- JSON endpoint ----------
 app.post("/chat", async (req, res) => {
   try {
     const userMessage = req.body?.message;
@@ -43,12 +43,3 @@ app.post("/chat", async (req, res) => {
     const reply = data?.choices?.[0]?.message?.content?.trim() || "No reply";
 
     res.json({ reply });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "server_error" });
-  }
-});
-
-// Start server
-const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => console.log("Server running on port " + PORT));
