@@ -1,0 +1,19 @@
+<!doctype html><html><body>
+<h3>Admin Panel (small)</h3>
+<label>Ref: <input id="ref" value="main"></label><br>
+<label>Message: <input id="msg" value="manual deploy"></label><br>
+<button id="go">Trigger Deploy</button>
+<script>
+document.getElementById('go').onclick = async () => {
+  const ref = document.getElementById('ref').value;
+  const msg = document.getElementById('msg').value;
+  const token = prompt("Admin token (user token) — provide admin token");
+  const r = await fetch('/admin/trigger-deploy', {
+    method:'POST', headers:{'Content-Type':'application/json','Authorization': token},
+    body: JSON.stringify({ref, message: msg})
+  });
+  const j = await r.json();
+  alert(JSON.stringify(j));
+};
+</script>
+</body></html>
