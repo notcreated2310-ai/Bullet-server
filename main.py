@@ -1,140 +1,85 @@
-# main.py
-from fastapi import FastAPI, HTTPException, Header, Depends
-from pydantic import BaseModel
-from typing import Optional, Dict
-import os, requests, json, uuid
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+import os
 
-app = FastAPI(title="Control Center - Trading Backend")
+app = FastAPI()
 
-# Simple in-memory for demo. Replace with persistent DB in prod.
-USERS = {"admin": {"password": "adminpass", "role": "admin"}}
-BROKER_SESSIONS: Dict[str, Dict] = {}   # user -> {token, meta}
-UI_CONFIG = {"cards": ["balance","positions","quickbuy"]}
+# Mount static for favicon
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# ----- models -----
-class BrokerInit(BaseModel):
-    app_user: str
-    finvasia_user: str
-    finvasia_password: str
-    api_key: Optional[str] = None
+# Dummy in-memory session (for demo)
+sessions = {"broker": False, "admin": False}
 
-class BrokerOTP(BaseModel):
-    app_user: str
-    otp: str
+@app.get("/", response_class=HTMLResponse)
+def screen1():
+    return """
+    <h2>📌 Screen 1</h2>
+    <form action="/broker-login" method="post">
+        <input type="text" name="api_key" placeholder="Broker API Key" required><br>
+        <input type="text" name="otp" placeholder="Enter OTP" required><br>
+        <button type="submit">Broker Login</button>
+    </form>
+    <br>
+    <form action="/admin-login" method="post">
+        <input type="text" name="admin_id" placeholder="Admin ID" required><br>
+        <input type="password" name="admin_pass" placeholder="Admin Password" required><br>
+        <button type="submit">Admin Login</button>
+    </form>
+    """
 
-class AdminLoginIn(BaseModel):
-    username: str
-    password: str
+@app.post("/broker-login")
+def broker_login(api_key: str = Form(...), otp: str = Form(...)):
+    # TODO: integrate real Finvasia API login here
+    if api_key == os.getenv("FINVASIA_API_KEY") and otp == "123456":  
+        sessions["broker"] = True
+        return RedirectResponse("/dashboard", status_code=302)
+    return {"error": "Invalid Broker Login"}
 
-class ApproveIn(BaseModel):
-    cmd: str
-    payload: dict = {}
+@app.post("/admin-login")
+def admin_login(admin_id: str = Form(...), admin_pass: str = Form(...)):
+    if admin_id == "admin" and admin_pass == os.getenv("ADMIN_PASS", "admin123"):
+        sessions["admin"] = True
+        return RedirectResponse("/dashboard", status_code=302)
+    return {"error": "Invalid Admin Login"}
 
-# ----- util -----
-def verify_token(header_token: Optional[str] = Header(None)):
-    # naive token verification for demo - replace with JWT
-    if header_token and header_token in USERS:
-        return header_token
-    raise HTTPException(status_code=401, detail="Invalid token")
-
-# ----- root & health -----
-@app.get("/")
-def root():
-    return {"status":"ok","service":"control-center"}
-
-@app.get("/dashboard")
+@app.get("/dashboard", response_class=HTMLResponse)
 def dashboard():
-    return {"status":"ok","users":len(USERS),"ui_config": UI_CONFIG}
+    if not (sessions["broker"] or sessions["admin"]):
+        return RedirectResponse("/", status_code=302)
 
-# ----- app user auth (basic demo) -----
-@app.post("/auth/login")
-def auth_login(data: AdminLoginIn):
-    u = USERS.get(data.username)
-    if not u or u["password"] != data.password:
-        raise HTTPException(401, "invalid credentials")
-    # return a simple token (in prod use JWT)
-    token = data.username  # using username as token for simplicity
-    return {"token": token, "role": u.get("role","user")}
+    broker_status = "✅ Connected" if sessions["broker"] else "❌ Not Connected"
+    admin_status = "✅ Logged In" if sessions["admin"] else "❌ Not Logged In"
 
-# ----- broker login start: call Finvasia auth endpoint (placeholder) -----
-@app.post("/broker/initiate_login")
-def broker_initiate(data: BrokerInit, token: Optional[str] = Header(None)):
-    # ensure app user exists / authorized
-    app_user = data.app_user
-    # --- CALL FINVASIA AUTH API HERE ---
-    # Example placeholder: Finvasia often expects API-key + username+password and returns a response requiring OTP
-    # We'll simulate: return {"otp_required": True, "session_id": "..."}
-    session_id = str(uuid.uuid4())
-    # store temporary session
-    BROKER_SESSIONS[app_user] = {"stage":"OTP_PENDING", "session_id": session_id, "meta": {"fin_user": data.finvasia_user}}
-    return {"otp_required": True, "message": "OTP sent to registered mobile (simulated)", "session_id": session_id}
+    return f"""
+    <h2>📊 Dashboard</h2>
+    <p>Broker Status: {broker_status}</p>
+    <p>Admin Status: {admin_status}</p>
+    <hr>
+    <h3>🔧 Admin Control Centre</h3>
+    <form action="/upgrade-ui" method="post">
+        <button type="submit">Upgrade UI</button>
+    </form>
+    <form action="/upgrade-backend" method="post">
+        <button type="submit">Upgrade Backend</button>
+    </form>
+    <form action="/upgrade-server" method="post">
+        <button type="submit">Upgrade Server</button>
+    </form>
+    """
 
-# ----- broker submit otp -----
-@app.post("/broker/submit_otp")
-def broker_submit_otp(body: BrokerOTP):
-    app_user = body.app_user
-    rec = BROKER_SESSIONS.get(app_user)
-    if not rec or rec.get("stage") != "OTP_PENDING":
-        raise HTTPException(400, "no pending login")
-    otp = body.otp
-    # --- CALL FINVASIA VERIFY OTP HERE, exchange for token ---
-    # Simulate success if otp length >= 4
-    if len(otp) < 3:
-        raise HTTPException(400, "invalid otp")
-    # simulate token
-    broker_token = "broker-token-" + str(uuid.uuid4())
-    rec.update({"stage":"LOGGED_IN","token":broker_token})
-    return {"ok": True, "token": broker_token, "message":"broker login successful"}
+@app.post("/upgrade-ui")
+def upgrade_ui():
+    # TODO: Put your real UI upgrade logic here
+    return {"message": "UI upgrade triggered ✅"}
 
-# ----- portfolio endpoint -----
-@app.get("/portfolio")
-def portfolio(app_user: Optional[str] = None, auth: str = Header(None)):
-    # require token: for demo we accept header token equals username
-    if not auth or auth not in BROKER_SESSIONS and auth not in USERS:
-        # allow app_user param for demo
-        pass
-    # sample portfolio
-    return {
-        "balance": 125000.0,
-        "holdings":[{"symbol":"NIFTY","qty":2,"ltp":23800,"value":47600},{"symbol":"RELIANCE","qty":3,"ltp":2400,"value":7200}],
-        "pnl": 4200.0
-    }
+@app.post("/upgrade-backend")
+def upgrade_backend():
+    # TODO: Put your real backend update logic here
+    return {"message": "Backend upgrade triggered ✅"}
 
-# ----- admin endpoints -----
-@app.post("/admin/login")
-def admin_login(creds: AdminLoginIn):
-    u = USERS.get(creds.username)
-    if not u or u["password"] != creds.password or u.get("role") != "admin":
-        raise HTTPException(401, "invalid admin credentials")
-    return {"token": creds.username, "role":"admin"}
-
-@app.post("/admin/ui-config")
-def admin_ui_config(payload: dict, auth: Optional[str] = Header(None)):
-    # require admin token; in demo token == 'admin'
-    if auth != "admin":
-        raise HTTPException(403, "admin only")
-    UI_CONFIG.clear()
-    UI_CONFIG.update(payload)
-    return {"ok": True, "ui_config": UI_CONFIG}
-
-@app.post("/admin/approve")
-def admin_approve(data: ApproveIn, auth: Optional[str] = Header(None)):
-    if auth != "admin":
-        raise HTTPException(403, "admin only")
-    # Example: if cmd == 'deploy' -> trigger GitHub workflow / Render redeploy
-    cmd = data.cmd
-    if cmd == "deploy":
-        # call GitHub Actions / Render API here (use env vars)
-        # For demo just return ok
-        return {"ok": True, "action": "deploy_triggered", "payload": data.payload}
-    elif cmd == "upgrade_ui":
-        UI_CONFIG.update(data.payload or {})
-        return {"ok": True, "action":"ui_updated","ui_config": UI_CONFIG}
-    else:
-        return {"ok": False, "message":"unknown command"}
-
-# ----- run local (for dev only) -----
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)
+@app.post("/upgrade-server")
+def upgrade_server():
+    # TODO: Put your real server update logic here
+    return {"message": "Server upgrade triggered ✅"}
     
