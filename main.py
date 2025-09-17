@@ -1,85 +1,50 @@
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 import os
 
 app = FastAPI()
 
-# Mount static for favicon
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# -----------------------
+# Root Route (Test)
+# -----------------------
+@app.get("/")
+def home():
+    return {"status": "ok", "msg": "Server is live"}
 
-# Dummy in-memory session (for demo)
-sessions = {"broker": False, "admin": False}
+# -----------------------
+# Admin Login (New)
+# -----------------------
+@app.post("/admin/login")
+async def admin_login(request: Request):
+    try:
+        # Raw text body (App Inventor से आएगा)
+        body = await request.body()
+        text_data = body.decode("utf-8").strip()
 
-@app.get("/", response_class=HTMLResponse)
-def screen1():
-    return """
-    <h2>📌 Screen 1</h2>
-    <form action="/broker-login" method="post">
-        <input type="text" name="api_key" placeholder="Broker API Key" required><br>
-        <input type="text" name="otp" placeholder="Enter OTP" required><br>
-        <button type="submit">Broker Login</button>
-    </form>
-    <br>
-    <form action="/admin-login" method="post">
-        <input type="text" name="admin_id" placeholder="Admin ID" required><br>
-        <input type="password" name="admin_pass" placeholder="Admin Password" required><br>
-        <button type="submit">Admin Login</button>
-    </form>
-    """
+        # Format: admin_id|admin_pass
+        if "|" not in text_data:
+            return JSONResponse(content={"status": "error", "msg": "Invalid format, use admin|password"}, status_code=400)
 
-@app.post("/broker-login")
-def broker_login(api_key: str = Form(...), otp: str = Form(...)):
-    # TODO: integrate real Finvasia API login here
-    if api_key == os.getenv("FINVASIA_API_KEY") and otp == "123456":  
-        sessions["broker"] = True
-        return RedirectResponse("/dashboard", status_code=302)
-    return {"error": "Invalid Broker Login"}
+        admin_id, admin_pass = text_data.split("|", 1)
 
-@app.post("/admin-login")
-def admin_login(admin_id: str = Form(...), admin_pass: str = Form(...)):
-    if admin_id == "admin" and admin_pass == os.getenv("ADMIN_PASS", "admin123"):
-        sessions["admin"] = True
-        return RedirectResponse("/dashboard", status_code=302)
-    return {"error": "Invalid Admin Login"}
+        # ✅ Credentials check (Env variables से)
+        ADMIN_USER = os.getenv("ADMIN_USER", "admin")     # default = admin
+        ADMIN_PASS = os.getenv("ADMIN_PASS", "1234")      # default = 1234
 
-@app.get("/dashboard", response_class=HTMLResponse)
-def dashboard():
-    if not (sessions["broker"] or sessions["admin"]):
-        return RedirectResponse("/", status_code=302)
+        if admin_id == ADMIN_USER and admin_pass == ADMIN_PASS:
+            return {"status": "success", "msg": "Login successful"}
+        else:
+            return {"status": "fail", "msg": "Invalid credentials"}
 
-    broker_status = "✅ Connected" if sessions["broker"] else "❌ Not Connected"
-    admin_status = "✅ Logged In" if sessions["admin"] else "❌ Not Logged In"
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "msg": str(e)}, status_code=500)
 
-    return f"""
-    <h2>📊 Dashboard</h2>
-    <p>Broker Status: {broker_status}</p>
-    <p>Admin Status: {admin_status}</p>
-    <hr>
-    <h3>🔧 Admin Control Centre</h3>
-    <form action="/upgrade-ui" method="post">
-        <button type="submit">Upgrade UI</button>
-    </form>
-    <form action="/upgrade-backend" method="post">
-        <button type="submit">Upgrade Backend</button>
-    </form>
-    <form action="/upgrade-server" method="post">
-        <button type="submit">Upgrade Server</button>
-    </form>
-    """
-
-@app.post("/upgrade-ui")
-def upgrade_ui():
-    # TODO: Put your real UI upgrade logic here
-    return {"message": "UI upgrade triggered ✅"}
-
-@app.post("/upgrade-backend")
-def upgrade_backend():
-    # TODO: Put your real backend update logic here
-    return {"message": "Backend upgrade triggered ✅"}
-
-@app.post("/upgrade-server")
-def upgrade_server():
-    # TODO: Put your real server update logic here
-    return {"message": "Server upgrade triggered ✅"}
-    
+# -----------------------
+# (यहाँ आपके Broker APIs, trading routes आदि add रहेंगे)
+# Example:
+# -----------------------
+@app.get("/balance")
+def get_balance():
+    # Dummy response, यहाँ broker API call करना है
+    return {"balance": 100000, "currency": "INR"}
+        
