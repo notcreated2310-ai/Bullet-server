@@ -12,7 +12,7 @@ def home():
     return {"status": "ok", "msg": "Server is live"}
 
 # -----------------------
-# Admin Login (New)
+# Admin Login (Raw Text Body)
 # -----------------------
 @app.post("/admin/login")
 async def admin_login(request: Request):
@@ -23,7 +23,10 @@ async def admin_login(request: Request):
 
         # Format: admin_id|admin_pass
         if "|" not in text_data:
-            return JSONResponse(content={"status": "error", "msg": "Invalid format, use admin|password"}, status_code=400)
+            return JSONResponse(
+                content={"status": "error", "msg": "Invalid format, use admin|password"},
+                status_code=400,
+            )
 
         admin_id, admin_pass = text_data.split("|", 1)
 
@@ -37,14 +40,7 @@ async def admin_login(request: Request):
             return {"status": "fail", "msg": "Invalid credentials"}
 
     except Exception as e:
-        return JSONResponse(content={"status": "error", "msg": str(e)}, status_code=500)
-
-# -----------------------
-# (यहाँ आपके Broker APIs, trading routes आदि add रहेंगे)
-# Example:
-# -----------------------
-@app.get("/balance")
-def get_balance():
-    # Dummy response, यहाँ broker API call करना है
-    return {"balance": 100000, "currency": "INR"}
+        return JSONResponse(
+            content={"status": "error", "msg": str(e)}, status_code=500
+        )
         
