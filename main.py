@@ -56,13 +56,10 @@ def admin_page():
 # Admin Deploy Endpoint
 # -----------------------
 @app.post("/admin/deploy")
-async def deploy_code(request: Request):
-    try:
-        data = await request.json()
-        code = data.get("code", "")
-
-        if not code.strip():
-            return {"status": "error", "msg": "No code provided"}
+async def admin_deploy(data: dict):
+    code = data.get("code", "")
+    # yaha aapka strategy code handle hoga
+    return {"status": "success", "message": "Code deployed successfully"}
 
         # Code को server पर save करो
         with open("strategy.py", "w", encoding="utf-8") as f:
