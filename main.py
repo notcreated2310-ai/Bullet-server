@@ -81,24 +81,22 @@ def action():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-    
-# -----------------------
-# Dynamic Deploy System
-# -----------------------
-from fastapi import Form
 
-# Temporary store (memory)
+# -----------------------
+# ✅ New Dynamic Deploy System
+# -----------------------
+
 pending_code = None
 approved_code = None
 
-@app.post("/deploy")
-async def deploy_code(code: str = Form(...)):
+@app.post("/code/deploy")
+async def code_deploy(code: str = Form(...)):
     global pending_code
     pending_code = code
     return {"status": "pending", "msg": "Code received, waiting for approval"}
 
-@app.post("/approve")
-def approve_code():
+@app.post("/code/approve")
+def code_approve():
     global pending_code, approved_code
     if not pending_code:
         return {"status": "fail", "msg": "No pending code to approve"}
@@ -106,8 +104,8 @@ def approve_code():
     pending_code = None
     return {"status": "success", "msg": "Code approved & deployed", "approved_code": approved_code}
 
-@app.get("/status")
-def status():
+@app.get("/code/status")
+def code_status():
     return {
         "pending": pending_code if pending_code else None,
         "approved": approved_code if approved_code else None
