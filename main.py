@@ -1,113 +1,123 @@
-from flask import Flask, request, jsonify, render_template
-import os, json
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import JSONResponse, HTMLResponse
+import os
 
-app = Flask(__name__)
+app = FastAPI()
 
-# ---- Existing Settings (Don't Change) ----
-ADMIN_USER = "admin"
-ADMIN_PASS = "password"
-DEPLOY_FOLDER = "deployed"
-os.makedirs(DEPLOY_FOLDER, exist_ok=True)
-
-
-# ---------- Home / Login UI ----------
-@app.route("/")
+# -----------------------
+# Root Route (Test)
+# -----------------------
+@app.get("/")
 def home():
-    return render_template("index.html")
+    return {"status": "ok", "msg": "Server is live"}
 
-
-# ---------- API: Handle Login ----------
-@app.route("/login", methods=["POST"])
-def login():
-    data = request.json
-    if data.get("username") == ADMIN_USER and data.get("password") == ADMIN_PASS:
-        return jsonify({"status": "success", "msg": "Login successful"})
-    return jsonify({"status": "error", "msg": "Invalid credentials"})
-    
-
-
-# ---------- API: Deploy Strategy Code ----------
-@app.route("/deploy", methods=["POST"])
-def deploy_code():
+# -----------------------
+# Admin Login (Raw Text Format admin_id|admin_pass)
+# -----------------------
+@app.post("/admin/login")
+async def admin_login(request: Request):
     try:
-        code = request.json.get("code", "")
-        filepath = os.path.join(DEPLOY_FOLDER, "strategy.py")
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(code)
+        # Raw text body (App Inventor से आएगा)
+        body = await request.body()
+        text_data = body.decode("utf-8").strip()
 
-        # Default response
-        response = {
-            "status": "success",
-            "msg": "Strategy saved",
-            "file": filepath,
-            "new_blocks": []
-        }
+        # Format: admin_id|admin_pass
+        if "|" not in text_data:
+            return JSONResponse(
+                content={"status": "error", "msg": "Invalid format, use admin|password"},
+                status_code=400
+            )
 
-        # -------- Dynamic UI Parsing --------
-        # If code contains JSON like {"new_blocks":[{...}]}, parse it
-        try:
-            parsed = json.loads(code)
-            if "new_blocks" in parsed:
-                response["new_blocks"] = parsed["new_blocks"]
-                response["msg"] = "Dynamic UI deployed with new blocks"
-        except Exception:
-            pass  # ignore if code is normal Python
+        admin_id, admin_pass = text_data.split("|", 1)
 
-        return jsonify(response)
+        # ✅ Credentials check (Env variables से)
+        ADMIN_USER = os.getenv("ADMIN_USER", "admin")     # default = admin
+        ADMIN_PASS = os.getenv("ADMIN_PASS", "1234")      # default = 1234
+
+        if admin_id == ADMIN_USER and admin_pass == ADMIN_PASS:
+            return {"status": "success", "msg": "Login successful"}
+        else:
+            return {"status": "fail", "msg": "Invalid credentials"}
 
     except Exception as e:
-        return jsonify({"status": "error", "msg": str(e)})
-
-
-# ---------- API: Upgrade UI via Action ----------
-@app.route("/action", methods=["POST"])
-def action():
-    payload = request.json
-    response = {"ui_update": False, "new_blocks": []}
-
-    if payload.get("action") == "upgrade":
-        response["ui_update"] = True
-        response["msg"] = "UI upgraded with Preview + Approve/Reject blocks"
-        response["new_blocks"].extend([
-            {"name": "PreviewBlock", "type": "button"},
-            {"name": "ApproveBlock", "type": "button"},
-            {"name": "RejectBlock", "type": "button"}
-        ])
-    else:
-        response["msg"] = "No valid action provided!"
-
-    return jsonify(response)
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+        return JSONResponse(content={"status": "error", "msg": str(e)}, status_code=500)
 
 # -----------------------
-# ✅ New Dynamic Deploy System
+# Example Broker API (Dummy)
 # -----------------------
+@app.get("/balance")
+def get_balance():
+    # Dummy response, यहाँ broker API call करना है
+    return {"balance": 100000, "currency": "INR"}
 
+# -----------------------
+# Admin Panel (HTML page with code box)
+# -----------------------
+@app.get("/admin/panel", response_class=HTMLResponse)
+def admin_panel():
+    return """
+    <html>
+    <head><title>Admin Control Center</title></head>
+    <body style="font-family: Arial; margin:40px;">
+        <h2>Admin Control Center</h2>
+        <p>Status: Ready</p>
+
+        <form action="/code/deploy" method="post">
+            <label>Paste Python code / strategy below:</label><br>
+            <textarea name="code" rows="12" cols="80"></textarea><br><br>
+            <button type="submit">Deploy Code</button>
+        </form>
+    </body>
+    </html>
+    """
+
+# -----------------------
+# Dynamic Code Deploy System
+# -----------------------
 pending_code = None
 approved_code = None
 
 @app.post("/code/deploy")
 async def code_deploy(code: str = Form(...)):
+    """
+    Code submit karega (pending state me)
+    """
     global pending_code
     pending_code = code
     return {"status": "pending", "msg": "Code received, waiting for approval"}
 
-@app.post("/code/approve")
-def code_approve():
-    global pending_code, approved_code
-    if not pending_code:
-        return {"status": "fail", "msg": "No pending code to approve"}
-    approved_code = pending_code
-    pending_code = None
-    return {"status": "success", "msg": "Code approved & deployed", "approved_code": approved_code}
+@app.get("/code/pending")
+def get_pending_code():
+    """
+    Admin ko dikhane ke liye pending code
+    """
+    global pending_code
+    if pending_code:
+        return {"status": "pending", "code": pending_code}
+    else:
+        return {"status": "empty", "msg": "No pending code"}
 
-@app.get("/code/status")
-def code_status():
-    return {
-        "pending": pending_code if pending_code else None,
-        "approved": approved_code if approved_code else None
-    }
-    
+@app.post("/code/approve")
+async def approve_code():
+    """
+    Pending code ko approve karke active bana dega
+    """
+    global pending_code, approved_code
+    if pending_code:
+        approved_code = pending_code
+        pending_code = None
+        return {"status": "approved", "msg": "Code approved successfully"}
+    else:
+        return {"status": "fail", "msg": "No pending code to approve"}
+
+@app.get("/code/active")
+def get_active_code():
+    """
+    Currently active (approved) code dikhayega
+    """
+    global approved_code
+    if approved_code:
+        return {"status": "active", "code": approved_code}
+    else:
+        return {"status": "empty", "msg": "No active code"}
+        
