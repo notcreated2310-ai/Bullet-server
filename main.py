@@ -12,7 +12,7 @@ def home():
     return {"status": "ok", "msg": "Server is live"}
 
 # -----------------------
-# Admin Login (Raw Text Format admin_id|admin_pass)
+# Admin Login (Raw Text Format: admin_id|admin_pass)
 # -----------------------
 @app.post("/admin/login")
 async def admin_login(request: Request):
@@ -21,7 +21,7 @@ async def admin_login(request: Request):
         body = await request.body()
         text_data = body.decode("utf-8").strip()
 
-        # Format: admin_id|admin_pass
+        # Format check
         if "|" not in text_data:
             return JSONResponse(
                 content={"status": "error", "msg": "Invalid format, use admin|password"},
@@ -47,7 +47,6 @@ async def admin_login(request: Request):
 # -----------------------
 @app.get("/balance")
 def get_balance():
-    # Dummy response, यहाँ broker API call करना है
     return {"balance": 100000, "currency": "INR"}
 
 # -----------------------
@@ -79,45 +78,30 @@ approved_code = None
 
 @app.post("/code/deploy")
 async def code_deploy(code: str = Form(...)):
-    """
-    Code submit karega (pending state me)
-    """
     global pending_code
     pending_code = code
     return {"status": "pending", "msg": "Code received, waiting for approval"}
 
 @app.get("/code/pending")
 def get_pending_code():
-    """
-    Admin ko dikhane ke liye pending code
-    """
     global pending_code
     if pending_code:
         return {"status": "pending", "code": pending_code}
-    else:
-        return {"status": "empty", "msg": "No pending code"}
+    return {"status": "empty", "msg": "No pending code"}
 
 @app.post("/code/approve")
 async def approve_code():
-    """
-    Pending code ko approve karke active bana dega
-    """
     global pending_code, approved_code
     if pending_code:
         approved_code = pending_code
         pending_code = None
         return {"status": "approved", "msg": "Code approved successfully"}
-    else:
-        return {"status": "fail", "msg": "No pending code to approve"}
+    return {"status": "fail", "msg": "No pending code to approve"}
 
 @app.get("/code/active")
 def get_active_code():
-    """
-    Currently active (approved) code dikhayega
-    """
     global approved_code
     if approved_code:
         return {"status": "active", "code": approved_code}
-    else:
-        return {"status": "empty", "msg": "No active code"}
-        
+    return {"status": "empty", "msg": "No active code"}
+    
