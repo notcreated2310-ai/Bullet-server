@@ -1,11 +1,6 @@
 flask
 requests
 fastapi
-uvicorn
-python-multipart
-
-fastapi
 uvicorn[standard]
 python-multipart
-requests
 aiofiles
