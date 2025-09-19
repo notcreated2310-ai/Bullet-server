@@ -1,6 +1,5 @@
-flask
-requests
 fastapi
-uvicorn[standard]
+uvicorn
+requests
 python-multipart
-aiofiles
+jinja2
