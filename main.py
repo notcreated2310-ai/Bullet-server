@@ -17,11 +17,9 @@ def home():
 @app.post("/admin/login")
 async def admin_login(request: Request):
     try:
-        # Raw text body (App Inventor से आएगा)
         body = await request.body()
         text_data = body.decode("utf-8").strip()
 
-        # Format: admin_id|admin_pass
         if "|" not in text_data:
             return JSONResponse(
                 content={"status": "error", "msg": "Invalid format, use admin|password"},
@@ -30,9 +28,8 @@ async def admin_login(request: Request):
 
         admin_id, admin_pass = text_data.split("|", 1)
 
-        # ✅ Credentials check (Env variables से)
-        ADMIN_USER = os.getenv("ADMIN_USER", "admin")     # default = admin
-        ADMIN_PASS = os.getenv("ADMIN_PASS", "1234")      # default = 1234
+        ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+        ADMIN_PASS = os.getenv("ADMIN_PASS", "1234")
 
         if admin_id == ADMIN_USER and admin_pass == ADMIN_PASS:
             return {"status": "success", "msg": "Login successful"}
@@ -47,7 +44,6 @@ async def admin_login(request: Request):
 # -----------------------
 @app.get("/balance")
 def get_balance():
-    # Dummy response, यहाँ broker API call करना है
     return {"balance": 100000, "currency": "INR"}
 
 # -----------------------
@@ -79,18 +75,12 @@ approved_code = None
 
 @app.post("/code/deploy")
 async def code_deploy(code: str = Form(...)):
-    """
-    Code submit karega (pending state me)
-    """
     global pending_code
     pending_code = code
     return {"status": "pending", "msg": "Code received, waiting for approval"}
 
 @app.get("/code/pending")
 def get_pending_code():
-    """
-    Admin ko dikhane ke liye pending code
-    """
     global pending_code
     if pending_code:
         return {"status": "pending", "code": pending_code}
@@ -99,9 +89,6 @@ def get_pending_code():
 
 @app.post("/code/approve")
 async def approve_code():
-    """
-    Pending code ko approve karke active bana dega
-    """
     global pending_code, approved_code
     if pending_code:
         approved_code = pending_code
@@ -110,28 +97,14 @@ async def approve_code():
     else:
         return {"status": "fail", "msg": "No pending code to approve"}
 
-@app.get("/code/active")
+# -----------------------
+# 🔥 Modified: Active Code UI (Direct HTML)
+# -----------------------
+@app.get("/code/active", response_class=HTMLResponse)
 def get_active_code():
-    """
-    Currently active (approved) code JSON ke format me dikhayega
-    """
     global approved_code
     if approved_code:
-        return {"status": "active", "code": approved_code}
+        return approved_code  # directly return raw HTML
     else:
-        return {"status": "empty", "msg": "No active code"}
-
-# -----------------------
-# New Extra Route: /ui (Direct HTML render for App)
-# -----------------------
-@app.get("/ui", response_class=HTMLResponse)
-def ui_page():
-    """
-    Approved code ko directly HTML me render karega
-    """
-    global approved_code
-    if approved_code:
-        return approved_code
-    else:
-        return "<h3>No active UI found</h3>"
+        return "<html><body><h3>No active UI</h3></body></html>"
         
