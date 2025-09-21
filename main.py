@@ -1,56 +1,101 @@
-from fastapi import FastAPI, Request, Form, Query
+from fastapi import FastAPI, Form
 from fastapi.responses import JSONResponse, HTMLResponse
-import os
 
 app = FastAPI()
 
-# Simple in-memory storage
-CODE_STORAGE = {
-    "pending": None,
-    "active": None
-}
+# -----------------------
+# Root Route (Test)
+# -----------------------
+@app.get("/")
+def home():
+    return {"status": "ok", "msg": "Server is live"}
 
-
-# --- Auto Login (no credentials needed) ---
+# -----------------------
+# Direct Auto Login (No credentials)
+# -----------------------
 @app.get("/admin/autologin")
-async def auto_login():
-    return {"status": "success", "message": "Auto login successful"}
-    
-# --- Code Deploy ---
+def auto_login():
+    return {"status": "success", "message": "Login successful"}
+
+# -----------------------
+# Admin Panel (HTML page with code box)
+# -----------------------
+@app.get("/admin/panel", response_class=HTMLResponse)
+def admin_panel():
+    return """
+    <html>
+    <head><title>Admin Control Center</title></head>
+    <body style="font-family: Arial; margin:40px;">
+        <h2>Admin Control Center</h2>
+        <p>Status: Ready</p>
+
+        <form action="/code/deploy" method="post">
+            <label>Paste Python code / strategy below:</label><br>
+            <textarea name="code" rows="12" cols="80"></textarea><br><br>
+            <button type="submit">Deploy Code</button>
+        </form>
+    </body>
+    </html>
+    """
+
+# -----------------------
+# Dynamic Code Deploy System
+# -----------------------
+pending_code = None
+approved_code = None
+
 @app.post("/code/deploy")
 async def code_deploy(code: str = Form(...)):
-    CODE_STORAGE["pending"] = code
-    return {"status": "success", "message": "Code deployed. Waiting for approval."}
+    """
+    Code submit karega (pending state me)
+    """
+    global pending_code
+    pending_code = code
+    return {"status": "pending", "msg": "Code received, waiting for approval"}
 
+@app.get("/code/pending")
+def get_pending_code():
+    """
+    Admin ko dikhane ke liye pending code
+    """
+    global pending_code
+    if pending_code:
+        return {"status": "pending", "code": pending_code}
+    else:
+        return {"status": "empty", "msg": "No pending code"}
 
-# --- Code Approve ---
 @app.post("/code/approve")
-async def code_approve():
-    if CODE_STORAGE["pending"]:
-        CODE_STORAGE["active"] = CODE_STORAGE["pending"]
-        CODE_STORAGE["pending"] = None
-        return {"status": "success", "message": "Code approved & active."}
-    return {"status": "error", "message": "No pending code found."}
+async def approve_code():
+    """
+    Pending code ko approve karke active bana dega
+    """
+    global pending_code, approved_code
+    if pending_code:
+        approved_code = pending_code
+        pending_code = None
+        return {"status": "approved", "msg": "Code approved successfully"}
+    else:
+        return {"status": "fail", "msg": "No pending code to approve"}
 
-
-# --- Active Code (returns HTML directly) ---
 @app.get("/code/active")
-async def code_active():
-    if CODE_STORAGE["active"]:
-        return HTMLResponse(content=CODE_STORAGE["active"])
-    return HTMLResponse("<h3>No active code found.</h3>")
+def get_active_code():
+    """
+    Currently active (approved) code dikhayega
+    """
+    global approved_code
+    if approved_code:
+        return HTMLResponse(content=approved_code)  # direct HTML return karega
+    else:
+        return {"status": "empty", "msg": "No active code"}
 
-
-# --- UI Preview (helper route) ---
-@app.get("/ui")
-async def ui_preview():
-    if CODE_STORAGE["active"]:
-        return HTMLResponse(content=CODE_STORAGE["active"])
-    return HTMLResponse("<h3>No UI deployed yet.</h3>")
-
-
-# --- Root ---
-@app.get("/")
-async def root():
-    return {"message": "✅ Server is live. Use /admin/login, /code/deploy, /code/approve, /code/active, /ui"}
+# -----------------------
+# Simple UI Preview (GET)
+# -----------------------
+@app.get("/ui", response_class=HTMLResponse)
+def preview_ui():
+    global approved_code
+    if approved_code:
+        return HTMLResponse(content=approved_code)
+    else:
+        return HTMLResponse("<h3>No UI Deployed</h3>")
         
