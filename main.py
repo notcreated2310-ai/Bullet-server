@@ -18,71 +18,58 @@ def root():
     return {"status": "ok", "msg": "Server is live"}
 
 # -----------------------
-# Admin login - accept GET and POST (flexible)
+# Admin login - safe & simple
 # -----------------------
 @app.api_route("/admin/login", methods=["GET", "POST"])
-async def admin_login(request: Request):
+async def admin_login(request: Request, username: str = None, password: str = None):
     """
-    Accepts:
-     - GET  -> returns success (useful for quick browser test)
-     - POST -> accepts:
-         * form fields username + password
-         * raw body like "admin|1234"
-         * urlencoded "username=admin&password=1234"
-         * empty body -> fallback to environment defaults ADMIN_USER/ADMIN_PASS
+    Accepts credentials in multiple ways:
+      - GET: /admin/login?username=admin&password=1234
+      - POST form: username=admin, password=1234
+      - POST raw: "admin|1234"
     """
-    # If GET -> return success (so browser GET doesn't 405)
-    if request.method == "GET":
-        return {"status": "success", "message": "Login successful (GET)"}
-
-    # POST handling
-    username = None
-    password = None
-
-    # Try to read form (application/x-www-form-urlencoded or multipart)
     try:
-        form = await request.form()
-        if form:
-            username = form.get("username") or form.get("admin_id")
-            password = form.get("password") or form.get("admin_pass")
-    except Exception:
-        # ignore form parse errors
-        pass
-
-    # If not found in form, try raw body inspect
-    if not username and not password:
-        raw = (await request.body()).decode("utf-8", errors="ignore").strip()
-        if raw:
-            # format: admin|1234
-            if "|" in raw:
-                parts = raw.split("|", 1)
-                username = parts[0].strip()
-                password = parts[1].strip() if len(parts) > 1 else None
-            # urlencoded: username=admin&password=1234
-            elif "=" in raw and "&" in raw:
-                parsed = parse_qs(raw)
-                username = parsed.get("username", [None])[0]
-                password = parsed.get("password", [None])[0]
+        # 1) If query params given (GET or POST), use them
+        if username and password:
+            user = username.strip()
+            pw = password.strip()
+        else:
+            # 2) Try form fields
+            form = None
+            try:
+                form = await request.form()
+            except Exception:
+                pass
+            if form and ("username" in form or "password" in form):
+                user = form.get("username")
+                pw = form.get("password")
             else:
-                # maybe a single username only - treat as username
-                username = raw if raw else None
+                # 3) Try raw body "admin|1234"
+                raw = (await request.body()).decode("utf-8", errors="ignore").strip()
+                if "|" in raw:
+                    user, pw = raw.split("|", 1)
+                else:
+                    user, pw = None, None
 
-    # Fallback to env defaults if still missing
-    if not username:
-        username = os.getenv("ADMIN_USER", "admin")
-    if not password:
-        password = os.getenv("ADMIN_PASS", "1234")
+        # 4) Fallback to env defaults
+        if not user:
+            user = os.getenv("ADMIN_USER", "admin")
+        if not pw:
+            pw = os.getenv("ADMIN_PASS", "1234")
 
-    # Validate
-    ADMIN_USER = os.getenv("ADMIN_USER", "admin")
-    ADMIN_PASS = os.getenv("ADMIN_PASS", "1234")
+        # 5) Validate
+        ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+        ADMIN_PASS = os.getenv("ADMIN_PASS", "1234")
 
-    if username == ADMIN_USER and password == ADMIN_PASS:
-        return {"status": "success", "message": "Login successful"}
-    else:
-        return JSONResponse(status_code=401, content={"status": "error", "message": "Invalid credentials"})
+        if user == ADMIN_USER and pw == ADMIN_PASS:
+            return {"status": "success", "message": "Login successful"}
+        else:
+            return JSONResponse(status_code=401, content={"status": "error", "message": "Invalid credentials"})
 
-
+    except Exception as e:
+        # never crash
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        
 # -----------------------
 # Admin Panel (simple HTML form)
 # -----------------------
