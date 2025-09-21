@@ -1,63 +1,48 @@
-# main.py - Robust server for AppInventor integration
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi import FastAPI, Request, Form, Query
+from fastapi.responses import JSONResponse
 import os
-from urllib.parse import parse_qs
 
 app = FastAPI()
 
-# In-memory storage
-pending_code = None
-approved_code = None
-
-# -----------------------
-# Root
-# -----------------------
+# Root route
 @app.get("/")
-def root():
+def home():
     return {"status": "ok", "msg": "Server is live"}
 
+
 # -----------------------
-# Admin login - safe & simple
+# Admin Login - FINAL FIX
 # -----------------------
 @app.api_route("/admin/login", methods=["GET", "POST"])
-async def admin_login(request: Request, username: str = None, password: str = None):
-    """
-    Accepts credentials in multiple ways:
-      - GET: /admin/login?username=admin&password=1234
-      - POST form: username=admin, password=1234
-      - POST raw: "admin|1234"
-    """
+async def admin_login(
+    request: Request,
+    username: str = Query(default=None),
+    password: str = Query(default=None)
+):
     try:
-        # 1) If query params given (GET or POST), use them
-        if username and password:
-            user = username.strip()
-            pw = password.strip()
-        else:
-            # 2) Try form fields
-            form = None
-            try:
+        user = username
+        pw = password
+
+        # If no query params, try form or raw
+        if not user or not pw:
+            content_type = request.headers.get("content-type", "")
+
+            if "application/x-www-form-urlencoded" in content_type:
                 form = await request.form()
-            except Exception:
-                pass
-            if form and ("username" in form or "password" in form):
                 user = form.get("username")
                 pw = form.get("password")
+
             else:
-                # 3) Try raw body "admin|1234"
                 raw = (await request.body()).decode("utf-8", errors="ignore").strip()
                 if "|" in raw:
                     user, pw = raw.split("|", 1)
-                else:
-                    user, pw = None, None
 
-        # 4) Fallback to env defaults
+        # fallback defaults
         if not user:
             user = os.getenv("ADMIN_USER", "admin")
         if not pw:
             pw = os.getenv("ADMIN_PASS", "1234")
 
-        # 5) Validate
         ADMIN_USER = os.getenv("ADMIN_USER", "admin")
         ADMIN_PASS = os.getenv("ADMIN_PASS", "1234")
 
@@ -67,7 +52,6 @@ async def admin_login(request: Request, username: str = None, password: str = No
             return JSONResponse(status_code=401, content={"status": "error", "message": "Invalid credentials"})
 
     except Exception as e:
-        # never crash
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
         
 # -----------------------
