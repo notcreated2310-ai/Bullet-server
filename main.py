@@ -40,6 +40,11 @@ async def admin_login_post_form(username: str = Form(...), password: str = Form(
     return {"status": "error", "message": "Invalid credentials (POST-FORM)"}
 
 
+# --- Auto Login (no credentials needed) ---
+@app.get("/admin/autologin")
+async def auto_login():
+    return {"status": "success", "message": "Auto login successful"}
+    
 # --- Code Deploy ---
 @app.post("/code/deploy")
 async def code_deploy(code: str = Form(...)):
