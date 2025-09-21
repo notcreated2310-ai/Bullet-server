@@ -27,74 +27,43 @@ def admin_panel():
     <head><title>Admin Control Center</title></head>
     <body style="font-family: Arial; margin:40px;">
         <h2>Admin Control Center</h2>
-        <p>Status: Ready</p>
+        <p>Status: Auto-Deploy Mode (No Manual Approval Needed)</p>
 
         <form action="/code/deploy" method="post">
-            <label>Paste Python code / strategy below:</label><br>
+            <label>Paste HTML / UI Code below:</label><br>
             <textarea name="code" rows="12" cols="80"></textarea><br><br>
-            <button type="submit">Deploy Code</button>
+            <button type="submit">Deploy & Refresh</button>
         </form>
     </body>
     </html>
     """
 
 # -----------------------
-# Dynamic Code Deploy System
+# Dynamic Code Deploy System (Auto-Approve)
 # -----------------------
-pending_code = None
-approved_code = None
+approved_code = """
+<h2>🚀 Default UI</h2>
+<p>No code deployed yet.</p>
+"""
 
 @app.post("/code/deploy")
 async def code_deploy(code: str = Form(...)):
     """
-    Code submit karega (pending state me)
-    """
-    global pending_code
-    pending_code = code
-    return {"status": "pending", "msg": "Code received, waiting for approval"}
-
-@app.get("/code/pending")
-def get_pending_code():
-    """
-    Admin ko dikhane ke liye pending code
-    """
-    global pending_code
-    if pending_code:
-        return {"status": "pending", "code": pending_code}
-    else:
-        return {"status": "empty", "msg": "No pending code"}
-
-@app.post("/code/approve")
-async def approve_code():
-    """
-    Pending code ko approve karke active bana dega
-    """
-    global pending_code, approved_code
-    if pending_code:
-        approved_code = pending_code
-        pending_code = None
-        return {"status": "approved", "msg": "Code approved successfully"}
-    else:
-        return {"status": "fail", "msg": "No pending code to approve"}
-
-@app.get("/code/active")
-def get_active_code():
-    """
-    Currently active (approved) code dikhayega
+    Deploy code → auto approve → refresh
     """
     global approved_code
-    if approved_code:
-        return HTMLResponse(content=approved_code)  # direct HTML return karega
-    else:
-        return {"status": "empty", "msg": "No active code"}
+    approved_code = code  # सीधे approve कर दिया
+    return {
+        "status": "approved",
+        "msg": "Code deployed & approved successfully",
+        "refresh_url": "/ui"
+    }
 
-# -----------------------
-# Simple UI Preview (GET)
-# -----------------------
 @app.get("/ui", response_class=HTMLResponse)
-def preview_ui():
+def get_active_ui():
+    """
+    Always serve the approved (active) UI code
+    """
     global approved_code
-    if approved_code:
-        return HTMLResponse(content=approved_code)
-    else:
-        return HTMLResponse("<h3>No UI Deployed</h3>")
+    return HTMLResponse(content=approved_code)
+         
