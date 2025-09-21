@@ -15,7 +15,7 @@ async def admin_login(
     username: str = Form(...),
     password: str = Form(...)
 ):
-    if username == "admin" and password == "1234":
+    if username == "admin" and password == "40394039":
         return {"status": "success", "msg": "Login successful"}
     else:
         return {"status": "error", "msg": "Invalid credentials"}
