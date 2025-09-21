@@ -10,35 +10,6 @@ CODE_STORAGE = {
     "active": None
 }
 
-# --- Admin Login ---
-@app.get("/admin/login")
-async def admin_login_get(username: str = Query(...), password: str = Query(...)):
-    if username == "admin" and password == "1234":
-        return {"status": "success", "message": "Login successful (GET)"}
-    return {"status": "error", "message": "Invalid credentials (GET)"}
-
-
-@app.post("/admin/login")
-async def admin_login_post_json(request: Request):
-    try:
-        data = await request.json()
-    except Exception:
-        return JSONResponse({"status": "error", "message": "Invalid JSON"}, status_code=400)
-
-    username = data.get("username")
-    password = data.get("password")
-
-    if username == "admin" and password == "1234":
-        return {"status": "success", "message": "Login successful (POST-JSON)"}
-    return {"status": "error", "message": "Invalid credentials (POST-JSON)"}
-
-
-@app.post("/admin/login/form")
-async def admin_login_post_form(username: str = Form(...), password: str = Form(...)):
-    if username == "admin" and password == "1234":
-        return {"status": "success", "message": "Login successful (POST-FORM)"}
-    return {"status": "error", "message": "Invalid credentials (POST-FORM)"}
-
 
 # --- Auto Login (no credentials needed) ---
 @app.get("/admin/autologin")
