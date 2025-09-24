@@ -1,86 +1,167 @@
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-import requests
+from fastapi import FastAPI, Form
+from fastapi.responses import JSONResponse, HTMLResponse
 
-# -------------------------
-# Main App
-# -------------------------
 app = FastAPI()
 
-# Templates (UI pages)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+# -----------------------
+# Root Route (Test)
+# -----------------------
+@app.get("/")
+def home():
+    return {"status": "ok", "msg": "Server is live"}
 
+# -----------------------
+# Direct Auto Login (No credentials)
+# -----------------------
+@app.get("/admin/autologin")
+def auto_login():
+    return {"status": "success", "message": "Login successful"}
 
-# -------------------------
-# Home / UI Route
-# -------------------------
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+# -----------------------
+# Admin Panel (HTML page with code box)
+# -----------------------
+@app.get("/admin/panel", response_class=HTMLResponse)
+def admin_panel():
+    return """
+    <html>
+    <head><title>Admin Control Center</title></head>
+    <body style="font-family: Arial; margin:40px;">
+        <h2>Admin Control Center</h2>
+        <p>Status: Ready</p>
 
+        <form action="/code/deploy" method="post">
+            <label>Paste Python/HTML code for UI below:</label><br>
+            <textarea name="code" rows="12" cols="80"></textarea><br><br>
+            <button type="submit">Deploy Code</button>
+        </form>
+    </body>
+    </html>
+    """
 
-# -------------------------
-# Auto Login (old feature preserved)
-# -------------------------
-@app.post("/login")
-async def login(username: str = Form(...), password: str = Form(...)):
-    # Example: Replace with DB or secure storage
-    if username == "admin" and password == "admin123":
-        return {"status": "success", "message": "Auto Login Successful"}
-    return {"status": "failed", "message": "Invalid credentials"}
+# -----------------------
+# Dynamic Code Deploy System
+# -----------------------
+approved_code = None  # final active code
 
+@app.post("/code/deploy")
+async def code_deploy(code: str = Form(...)):
+    """
+    Code submit karega → auto approve → UI refresh ke liye ready
+    """
+    global approved_code
+    approved_code = code
+    return {"status": "approved", "msg": "Code deployed & approved successfully"}
 
-# -------------------------
-# Deploy Code Feature (old feature preserved)
-# -------------------------
-@app.post("/deploy")
-async def deploy_code(code: str = Form(...)):
-    try:
-        # safe eval/exec not used for security (future sandbox)
-        exec(code, globals())
-        return {"status": "success", "message": "Code deployed successfully!"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+@app.get("/code/active")
+def get_active_code():
+    """
+    Currently active (approved) code dikhayega
+    """
+    global approved_code
+    if approved_code:
+        return HTMLResponse(content=approved_code)
+    else:
+        return {"status": "empty", "msg": "No active code"}
 
+# -----------------------
+# Final UI with Fixed Header/Footer
+# -----------------------
+@app.get("/ui", response_class=HTMLResponse)
+def preview_ui():
+    global approved_code
+    dynamic_content = approved_code if approved_code else "<p>No UI Deployed</p>"
 
-# -------------------------
-# 🔹 Live Trading Endpoints
-# -------------------------
+    return f"""
+    <html>
+    <head>
+        <title>Trading App</title>
+        <style>
+            body {{
+                margin: 0;
+                font-family: Arial, sans-serif;
+                background: #f9f9f9;
+            }}
+            /* Header */
+            .header {{
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 60px;
+                background: #111827;
+                color: white;
+                display: flex;
+                justify-content: space-around;
+                align-items: center;
+                font-size: 14px;
+                z-index: 1000;
+            }}
+            /* Footer Menu */
+            .footer {{
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 60px;
+                background: #111827;
+                color: white;
+                display: flex;
+                justify-content: space-around;
+                align-items: center;
+                font-size: 14px;
+                z-index: 1000;
+            }}
+            .footer div {{
+                text-align: center;
+            }}
+            /* Scrollable Middle Section */
+            .content {{
+                margin-top: 70px;
+                margin-bottom: 70px;
+                padding: 15px;
+            }}
+            .card {{
+                background: white;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 15px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }}
+        </style>
+    </head>
+    <body>
+        <!-- Fixed Header -->
+        <div class="header">
+            <div>Balance: $10,000</div>
+            <div>Index: NIFTY 50</div>
+            <div>Status: LIVE</div>
+        </div>
 
-# 1. Live Price from Binance
-@app.get("/price/{symbol}")
-def get_price(symbol: str):
-    try:
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}"
-        data = requests.get(url, timeout=5).json()
-        return {"symbol": symbol.upper(), "price": data["price"]}
-    except Exception as e:
-        return {"error": str(e)}
+        <!-- Scrollable Middle Section -->
+        <div class="content">
+            <div class="card">
+                <h3>Dynamic Section</h3>
+                {dynamic_content}
+            </div>
+            <div class="card">
+                <h3>Market News</h3>
+                <p>Latest forex & crypto updates will appear here...</p>
+            </div>
+            <div class="card">
+                <h3>Signals</h3>
+                <p>Buy/Sell suggestions...</p>
+            </div>
+        </div>
 
-
-# 2. Account Balance (dummy now, connect to broker API later)
-@app.get("/account/balance")
-def get_balance():
-    # Later replace with broker API call
-    return {"balance": 5000, "pnl": 230}
-
-
-# 3. Order History (dummy now, replace with real broker orders later)
-@app.get("/orders")
-def get_orders():
-    return [
-        {"symbol": "BTCUSDT", "side": "BUY", "qty": 0.01, "price": 64000},
-        {"symbol": "ETHUSDT", "side": "SELL", "qty": 0.5, "price": 2400},
-    ]
-
-
-# -------------------------
-# Status Check
-# -------------------------
-@app.get("/status")
-def status():
-    return {"status": "running", "message": "Trading App Backend Active ✅"}
+        <!-- Fixed Footer Menu -->
+        <div class="footer">
+            <div>🏠<br>Home</div>
+            <div>📈<br>Watchlist</div>
+            <div>📊<br>Orders</div>
+            <div>👤<br>Account</div>
+            <div>⚙️<br>Admin</div>
+        </div>
+    </body>
+    </html>
+    """
     
