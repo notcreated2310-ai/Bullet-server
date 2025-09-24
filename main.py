@@ -1,4 +1,3 @@
-# final_main.py (replace your existing main.py with this)
 from fastapi import FastAPI, Form, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 import sqlite3, os, time, uuid, json, hmac, hashlib, requests
@@ -25,8 +24,9 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Bullet Live Trading Server")
 
 # ---------------------------
-# DB init (keep schema compatible)
+# DB init
 # ---------------------------
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
@@ -68,14 +68,14 @@ class BrokerManager:
         self.base = 'https://testnet.binance.vision/api' if testnet else 'https://api.binance.com/api'
 
     def _sign_payload(self, payload):
-        query_string = '&'.join([f'{k}={v}' for k,v in payload.items()])
+        query_string = '&'.join([f"{k}={v}" for k,v in payload.items()])
         signature = hmac.new(self.api_secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
         payload['signature'] = signature
         return payload
 
     def place_order(self, symbol, side, type_, quantity, price=None):
         ts = int(time.time()*1000)
-        endpoint = f'{self.base}/v3/order'
+        endpoint = f"{self.base}/v3/order"
         payload = {'symbol':symbol,'side':side,'type':type_,'quantity':quantity,'timestamp':ts}
         if price: payload['price']=price
         payload = self._sign_payload(payload)
@@ -85,7 +85,7 @@ class BrokerManager:
 
     def account_balance(self):
         ts = int(time.time()*1000)
-        endpoint = f'{self.base}/v3/account'
+        endpoint = f"{self.base}/v3/account"
         payload = {'timestamp':ts}
         payload = self._sign_payload(payload)
         headers = {'X-MBX-APIKEY': self.api_key}
@@ -120,7 +120,7 @@ def admin_panel():
     return f"""
     <html><body style='font-family:Arial;padding:20px;'>
       <h2>Admin Panel</h2>
-      <h3>Add Navigation Button (Header/Footer)</h3>
+      <h3>Add Navigation Button</h3>
       <form action='/admin/nav/add' method='post'>
         <label>Position:</label>
         <select name='position'>
@@ -130,7 +130,7 @@ def admin_panel():
         <label>Label:</label><input name='label'/><br>
         <label>Route (e.g. /reports):</label><input name='route' placeholder='/reports'/><br>
         <label>Optional code (HTML) for route content (paste):</label><br>
-        <textarea name='code' rows='8' cols='80'></textarea><br>
+        <textarea name='code' rows='6' cols='80'></textarea><br>
         <button type='submit'>Add Button</button>
       </form>
 
@@ -168,9 +168,9 @@ async def admin_nav_add(request: Request):
     route = form.get('route','/')
     code = form.get('code','')
     conn = db_conn(); cur = conn.cursor()
-    ordv = int(time.time())
+    ord = int(time.time())
     nid = str(uuid.uuid4())
-    cur.execute('INSERT INTO ui_nav_buttons (id, position, label, route, ord, code) VALUES (?,?,?,?,?,?)', (nid, position, label, route, ordv, code))
+    cur.execute('INSERT INTO ui_nav_buttons (id, position, label, route, ord, code) VALUES (?,?,?,?,?,?)', (nid, position, label, route, ord, code))
     conn.commit(); conn.close()
     return JSONResponse({'status':'ok','id':nid})
 
@@ -215,12 +215,11 @@ def code_active():
     for cat, code in rows:
         cats.setdefault(cat, []).append(code)
     for cat, blocks in cats.items():
-        html += f"<section style='padding:12px 0;'><h2 style='margin-bottom:8px'>{cat.upper()}</h2>"
+        html += f"<section><h2 style='margin-bottom:8px'>{cat.upper()}</h2>"
         for b in blocks:
-            # wrap each block in a container so CSS can make it full width
-            html += f"<div class='deployed-block' style='width:100%;min-height:220px;margin-bottom:12px'>{b}</div>"
+            html += f"<div style='margin-bottom:8px'>{b}</div>"
         html += '</section>'
-    return HTMLResponse(f"<div style='padding:6px'>{html}</div>")
+    return HTMLResponse(html)
 
 @app.post('/admin/cleanup')
 async def admin_cleanup(category: Optional[str] = Form(None), token: Optional[str] = Form(None)):
@@ -228,7 +227,7 @@ async def admin_cleanup(category: Optional[str] = Form(None), token: Optional[st
     conn = db_conn(); cur = conn.cursor()
     if category:
         cur.execute('DELETE FROM ui_blocks WHERE category=?', (category,))
-        cur.execute('DELETE FROM deploy_history WHERE detail LIKE ?', (f'%{category}%',))
+        cur.execute('DELETE FROM deploy_history WHERE detail LIKE ?', (f"%{category}%",))
     else:
         cur.execute('DELETE FROM ui_blocks')
         cur.execute('DELETE FROM deploy_history')
@@ -236,19 +235,7 @@ async def admin_cleanup(category: Optional[str] = Form(None), token: Optional[st
     return JSONResponse({'status':'ok','category': category or 'ALL'})
 
 # ---------------------------
-# Provide nav route content (used by /ui to load code for a nav route)
-# ---------------------------
-@app.get('/nav/content')
-def nav_content(route: str):
-    conn = db_conn(); cur = conn.cursor()
-    cur.execute('SELECT code FROM ui_nav_buttons WHERE route=? LIMIT 1', (route,))
-    row = cur.fetchone(); conn.close()
-    if not row:
-        raise HTTPException(404, "No content")
-    return HTMLResponse(row[0])
-
-# ---------------------------
-# UI preview - improved: dynamic area loads code active (full width) or nav-specific code
+# UI preview - renders header/footer from DB and middle content scrolls
 # ---------------------------
 @app.get('/ui', response_class=HTMLResponse)
 def ui_preview():
@@ -259,59 +246,40 @@ def ui_preview():
     footer_buttons = [n for n in navs if n[0]=='footer']
     conn.close()
 
-    # header html
     if not header_buttons:
-        header_html = "<div class='nav-item' onclick=\"loadDefault()\">Index</div><div class='nav-item' onclick=\"loadDefault()\">Market</div><div class='nav-item' onclick=\"loadDefault()\">Status</div>"
+        header_html = "<div class='nav-item'>Index</div><div class='nav-item'>Market</div><div class='nav-item'>Status</div>"
     else:
         header_html = ''.join([f"<div class='nav-item' onclick=\"navigate('{n[2]}')\">{n[1]}</div>" for n in header_buttons])
-    # footer html
     if not footer_buttons:
         footer_html = "<div class='nav-item' onclick=\"navigate('/home')\">Home</div><div class='nav-item' onclick=\"navigate('/watchlist')\">Watchlist</div><div class='nav-item' onclick=\"navigate('/orders')\">Orders</div><div class='nav-item' onclick=\"navigate('/account')\">Account</div><div class='nav-item' onclick=\"navigate('/admin/panel')\">Admin</div>"
     else:
         footer_html = ''.join([f"<div class='nav-item' onclick=\"navigate('{n[2]}')\">{n[1]}</div>" for n in footer_buttons])
 
-    # return full shell: header / dynamic middle / footer
     return HTMLResponse(f"""
 <html>
 <head>
   <meta name='viewport' content='width=device-width,initial-scale=1' />
   <style>
-    :root{{--header-h:72px;--footer-h:72px;}}
-    body{{margin:0;font-family:Arial;background:#f4f6f8;-webkit-font-smoothing:antialiased}}
-    .header{{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:#0f172a;color:white;display:flex;align-items:center;justify-content:space-around;z-index:1000;gap:8px;padding:0 8px}}
-    .header .nav-item{{padding:10px 14px;cursor:pointer;font-size:16px;border-radius:8px}}
-    .header .nav-item:hover{{background:rgba(255,255,255,0.04)}}
-    .footer{{position:fixed;bottom:0;left:0;right:0;height:var(--footer-h);background:#0f172a;color:white;display:flex;align-items:center;justify-content:space-around;z-index:1000;padding:0 6px;gap:6px}}
-    .footer .nav-item{{flex:1;text-align:center;padding:10px 6px;cursor:pointer;font-size:13px}}
-    .footer .nav-item:hover{{background:rgba(255,255,255,0.03);border-radius:8px}}
-    .middle{{padding:calc(var(--header-h) + 12px) 12px calc(var(--footer-h) + 12px) 12px;height:calc(100vh - (var(--header-h) + var(--footer-h)) - 24px);overflow:auto}}
-    .card{{background:white;border-radius:12px;padding:18px;margin-bottom:14px;box-shadow:0 6px 18px rgba(2,6,23,0.06)}}
-    .deployed-block{width:100%;min-height:260px;padding:0;margin:0}
-    .big-btn{display:inline-block;padding:10px 14px;border-radius:8px;border:none;background:#0b84ff;color:white;cursor:pointer;margin-right:8px}
-    /* ensure any embedded content (from user) takes width */
-    .deployed-block > *{max-width:100% !important;box-sizing:border-box}
+    body {{margin:0;font-family:Arial;background:#f4f6f8}}
+    .header {{position:fixed;top:0;left:0;right:0;height:70px;background:#0f172a;color:white;display:flex;align-items:center;justify-content:space-around;z-index:1000}}
+    .header .nav-item {{padding:8px 12px;cursor:pointer;font-size:16px}}
+    .footer {{position:fixed;bottom:0;left:0;right:0;height:70px;background:#0f172a;color:white;display:flex;align-items:center;justify-content:space-around;z-index:1000}}
+    .footer .nav-item {{padding:8px 12px;cursor:pointer;font-size:14px}}
+    .middle {{padding:90px 12px 90px 12px;height:calc(100vh - 160px);overflow:auto}}
+    .card {{background:white;border-radius:8px;padding:16px;margin-bottom:12px;box-shadow:0 2px 6px rgba(0,0,0,0.08)}}
+    iframe {{width:100%;border:none;min-height:400px}}
   </style>
 </head>
 <body>
   <div class='header'>
     {header_html}
   </div>
-
-  <div class='middle' id='middle'>
-    <div class='card' id='dynamic-card'>
-      <h3 style='margin-top:0'>Live UI Blocks</h3>
-      <div id='dynamic-area' style='width:100%'></div>
-    </div>
-
-    <div class='card'>
-      <h3 style='margin-top:0'>Market News</h3>
-      <div id='news-area'>Live news & signals will appear here.</div>
-    </div>
-
-    <div class='card'>
-      <h3 style='margin-top:0'>Quick Actions</h3>
-      <button class='big-btn' onclick="fetch('/broker/balance').then(r=>r.json()).then(d=>alert(JSON.stringify(d)))">Check Balance</button>
-      <button class='big-btn' onclick="navigate('/admin/panel')">Open Admin</button>
+  <div class='middle'>
+    <div class='card'><h3>Live UI Blocks</h3><iframe src='/code/active'></iframe></div>
+    <div class='card'><h3>Market News</h3><p>Live news & signals will appear here.</p></div>
+    <div class='card'><h3>Quick Actions</h3>
+      <button onclick="fetch('/broker/balance').then(r=>r.json()).then(d=>alert(JSON.stringify(d)))">Check Balance</button>
+      <button onclick="navigate('/admin/panel')">Open Admin</button>
     </div>
   </div>
 
@@ -320,50 +288,12 @@ def ui_preview():
   </div>
 
 <script>
-// load active deployed blocks into dynamic-area (full-width)
-async function loadActive(){
-  try{
-    const res = await fetch('/code/active');
-    const text = await res.text();
-    const area = document.getElementById('dynamic-area');
-    area.innerHTML = text;
-    // optional: make deployed blocks clickable or interactive
-    // scroll to top
-    document.getElementById('middle').scrollTop = 0;
-  }catch(e){
-    console.error(e);
-  }
-}
-
-// load nav route content (if admin saved custom code for route)
-async function navigate(path){
-  if(!path) return;
-  // if admin route -> open admin panel in same tab (full admin control)
-  if(path.startsWith('/admin')){
-    window.location.href = path;
-    return;
-  }
-  // try to fetch nav content from /nav/content?route=...
-  try{
-    const url = '/nav/content?route=' + encodeURIComponent(path);
-    const res = await fetch(url);
-    if(res.status===200){
-      const html = await res.text();
-      document.getElementById('dynamic-area').innerHTML = html;
-      // ensure scroll to top of middle
-      document.getElementById('middle').scrollTop = 0;
-      return;
-    }
-  }catch(e){/* continue to fallback */}
-  // fallback: navigate to path (may be external or other route)
-  window.location.href = path;
-}
-
-// initial load
-loadActive();
-
-// optionally refresh active blocks every 30s (you can remove/change)
-setInterval(loadActive, 30000);
+function navigate(path){{
+  if(path.startsWith('http')||path.startsWith('/')){{
+    if(path.endsWith('.html')||path.startsWith('/admin')){{ window.location.href = path; return; }}
+    window.open(path,'_self');
+  }}
+}}
 </script>
 </body>
 </html>
@@ -401,14 +331,8 @@ def status():
 # ---------------------------
 # Exception handler (basic)
 # ---------------------------
-from fastapi import Request
 @app.exception_handler(Exception)
 async def global_exc(request: Request, exc: Exception):
     try:
-        conn = db_conn(); cur = conn.cursor(); cur.execute('INSERT INTO logs (ts, level, message) VALUES (?,?,?)', (now_ts(), 'ERROR', str(exc))); conn.commit(); conn.close()
-    except: pass
-    return JSONResponse({'detail':'internal error'}, status_code=500)
-
-# ---------------------------
-# End of file
-# ---------------------------
+        conn = db_conn(); cur = conn.cursor(); cur.execute('INSERT INTO logs (ts, level, message) VALUES (?,?,?)', (now_ts(), 'ERROR', str(exc
+        
