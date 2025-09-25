@@ -1,82 +1,31 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Admin Panel</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f8; }
-    header { background: #0f172a; color: white; padding: 16px; }
-    h1 { margin: 0; font-size: 20px; }
-    section { padding: 16px; }
-    form { margin-bottom: 24px; background: #fff; padding: 12px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
-    label { display:block; margin-top: 8px; }
-    input, textarea, select { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; }
-    button { margin-top: 12px; padding: 10px 16px; border: none; background: #0f172a; color: white; border-radius: 6px; cursor: pointer; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-    th { background: #eee; }
-  </style>
+    <title>Admin Panel</title>
+    <link rel="stylesheet" href="/static/css/admin.css">
 </head>
 <body>
-  <header>
-    <h1>⚙️ Admin Control Panel</h1>
-  </header>
-
-  <section>
-    <h2>Add Navigation Button</h2>
-    <form action="/admin/nav/add" method="post">
-      <label>Position</label>
-      <select name="position">
-        <option value="header">Header</option>
-        <option value="footer">Footer</option>
-      </select>
-      <label>Label</label>
-      <input name="label" required>
-      <label>Route</label>
-      <input name="route" placeholder="/reports" required>
-      <label>Optional HTML Code</label>
-      <textarea name="code" rows="5"></textarea>
-      <button type="submit">Add Button</button>
+    <h1>Admin Panel</h1>
+    <form action="/add_component" method="post">
+        <input type="text" name="name" placeholder="Component Name" required>
+        <input type="text" name="type" placeholder="Type" required>
+        <input type="text" name="position" placeholder="Position (top/bottom)" required>
+        <input type="text" name="config" placeholder="Config (JSON)">
+        <button type="submit">Add Component</button>
     </form>
 
-    <h2>Deploy UI Block</h2>
-    <form action="/code/deploy" method="post">
-      <label>Category</label>
-      <input name="category" placeholder="e.g. charts">
-      <label>HTML Code</label>
-      <textarea name="code" rows="6"></textarea>
-      <button type="submit">Deploy</button>
-    </form>
+    <h2>Existing Components</h2>
+    <ul>
+        {% for c in components %}
+        <li>{{ c[0] }} - {{ c[1] }} ({{ c[2] }}) 
+            <form action="/delete_component" method="post" style="display:inline;">
+                <input type="hidden" name="id" value="{{ c[0] }}">
+                <button type="submit">Delete</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
 
-    <h2>Rollback / Cleanup</h2>
-    <form action="/admin/rollback" method="post">
-      <label>Category</label>
-      <input name="category" required>
-      <button type="submit">Rollback</button>
-    </form>
-
-    <h2>Broker Settings</h2>
-    <form action="/broker/save" method="post">
-      <label>Broker Name</label>
-      <input name="broker_name" required>
-      <label>API Key</label>
-      <input name="api_key" required>
-      <label>API Secret</label>
-      <input name="api_secret" required>
-      <label>Mode</label>
-      <select name="mode">
-        <option value="testnet">Testnet</option>
-        <option value="live">Live</option>
-      </select>
-      <button type="submit">Save</button>
-    </form>
-
-    <h2>Quick Links</h2>
-    <p><a href="/ui" target="_blank">Preview App UI</a></p>
-    <p><a href="/admin/history" target="_blank">View Deploy History</a></p>
-    <p><a href="/admin/logs" target="_blank">View Logs</a></p>
-    <p><a href="/broker/settings" target="_blank">View Broker Settings</a></p>
-  </section>
+    <script src="/static/js/admin.js"></script>
 </body>
 </html>
