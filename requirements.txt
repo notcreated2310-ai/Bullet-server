@@ -3,6 +3,3 @@ uvicorn[standard]
 requests
 python-multipart
 jinja2
-sqlalchemy
-databases
-aiosqlite
