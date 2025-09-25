@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>App UI</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <h2>Live UI</h2>
+    </header>
+
+    <div class="container">
+        {% for c in components %}
+            <div class="card">
+                <strong>{{ c[1] }}</strong> <br>
+                Type: {{ c[2] }} <br>
+                Pos: {{ c[3] }} <br>
+                Config: {{ c[4] }}
+            </div>
+        {% else %}
+            <p>No components added yet.</p>
+        {% endfor %}
+    </div>
+
+    <footer>
+        <nav>
+            <a href="/">Home</a> |
+            <a href="/admin">Admin</a>
+        </nav>
+    </footer>
+</body>
+</html>
