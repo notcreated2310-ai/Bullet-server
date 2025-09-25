@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Control Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f4f6f8;
+      color: #222;
+    }
+    header {
+      background: #0f172a;
+      color: white;
+      padding: 12px;
+      text-align: center;
+    }
+    main {
+      padding: 20px;
+    }
+    h2 {
+      margin-top: 20px;
+    }
+    form {
+      margin-bottom: 20px;
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin: 6px 0 4px;
+    }
+    input, textarea, select, button {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #0f172a;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1e293b;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+    }
+    th {
+      background: #0f172a;
+      color: white;
+    }
+    .section {
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚙️ Admin Control Panel</h1>
+  </header>
+  <main>
+    
+    <div class="section">
+      <h2>Add Navigation Button</h2>
+      <form action="/admin/nav/add" method="post">
+        <label>Position</label>
+        <select name="position">
+          <option value="header">Header</option>
+          <option value="footer">Footer</option>
+        </select>
+        <label>Label</label>
+        <input name="label" required>
+        <label>Route</label>
+        <input name="route" placeholder="/example">
+        <label>Optional Code (HTML)</label>
+        <textarea name="code" rows="5"></textarea>
+        <button type="submit">Add Button</button>
+      </form>
+    </div>
+
+    <div class="section">
+      <h2>Deploy UI Block</h2>
+      <form action="/code/deploy" method="post">
+        <label>Category</label>
+        <input name="category" required>
+        <label>Code</label>
+        <textarea name="code" rows="6"></textarea>
+        <button type="submit">Deploy Block</button>
+      </form>
+    </div>
+
+    <div class="section">
+      <h2>Rollback Category</h2>
+      <form action="/admin/rollback" method="post">
+        <label>Category</label>
+        <input name="category" required>
+        <button type="submit">Rollback</button>
+      </form>
+    </div>
+
+    <div class="section">
+      <h2>Broker Settings</h2>
+      <form action="/broker/save" method="post">
+        <label>Broker Name</label>
+        <input name="broker_name" placeholder="binance">
+        <label>API Key</label>
+        <input name="api_key">
+        <label>API Secret</label>
+        <input name="api_secret">
+        <label>Mode</label>
+        <select name="mode">
+          <option value="testnet">Testnet</option>
+          <option value="live">Live</option>
+        </select>
+        <button type="submit">Save Broker</button>
+      </form>
+    </div>
+
+    <div class="section">
+      <h2>Quick Links</h2>
+      <p><a href="/admin/history" target="_blank">View Deployment History</a></p>
+      <p><a href="/admin/logs" target="_blank">View Logs</a></p>
+      <p><a href="/ui" target="_blank">Open App UI</a></p>
+    </div>
+    
+  </main>
+</body>
+</html>
