@@ -1,382 +1,199 @@
-# ---------- PART 1 (paste first) ----------
-from fastapi import FastAPI, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
-import sqlite3, os, time, uuid, json, hmac, hashlib, requests
-from typing import Optional
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+import sqlite3, os, datetime
 
-# ---------------------------
-# Config
-# ---------------------------
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
-DB_PATH = os.environ.get("DB_PATH", "./data.db")
-LOG_FILE = os.environ.get("LOG_FILE", "./server.log")
-MAX_CODE_BYTES = int(os.environ.get("MAX_CODE_BYTES", "200000"))
-BINANCE_API_KEY = os.environ.get("BINANCE_API_KEY", "")
-BINANCE_API_SECRET = os.environ.get("BINANCE_API_SECRET", "")
-BINANCE_TESTNET = os.environ.get("BINANCE_TESTNET", "True").lower() == "true"
+app = FastAPI()
 
-# ---------------------------
-# App + logging
-# ---------------------------
-import logging
-logging.basicConfig(level=logging.INFO, filename=LOG_FILE,
-                    format='%(asctime)s [%(levelname)s] %(message)s')
-logger = logging.getLogger(__name__)
+# ----------------------------
+# Database setup
+# ----------------------------
+DB_FILE = "database.db"
 
-app = FastAPI(title="Bullet Live Trading Server")
-
-# ---------------------------
-# DB init
-# ---------------------------
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
-    cur.execute("""CREATE TABLE IF NOT EXISTS ui_blocks (
-        id TEXT PRIMARY KEY, category TEXT, code TEXT, created_at INTEGER, approved INTEGER DEFAULT 1
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS deploy_history (
-        id TEXT PRIMARY KEY, block_id TEXT, action TEXT, detail TEXT, ts INTEGER
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, level TEXT, message TEXT
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS ui_nav_buttons (
-        id TEXT PRIMARY KEY, position TEXT, label TEXT, route TEXT, ord INTEGER, code TEXT
-    )""")
+
+    # Active deployed UI
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS deployed_ui (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT,
+        code TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # Logs (errors + actions)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        level TEXT,
+        message TEXT
+    )
+    """)
+
+    # Broker API settings
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS broker_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        broker_name TEXT,
+        api_key TEXT,
+        api_secret TEXT,
+        mode TEXT DEFAULT 'testnet'
+    )
+    """)
+
     conn.commit()
     conn.close()
 
 init_db()
 
-# ---------------------------
-# Helpers
-# ---------------------------
-def now_ts():
-    return int(time.time())
+# ----------------------------
+# Templates & Static
+# ----------------------------
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-def db_conn():
-    return sqlite3.connect(DB_PATH)
+# ----------------------------
+# Root Test Route
+# ----------------------------
+@app.get("/")
+def home():
+    return {"status": "ok", "msg": "Server is live"}
 
-def require_admin(token: Optional[str]):
-    if not ADMIN_TOKEN:
-        return True
-    if not token:
-        raise HTTPException(403, "Admin token required")
-    if token != ADMIN_TOKEN:
-        raise HTTPException(403, "Invalid admin token")
-    return True
-
-# ---------------------------
-# BrokerManager (Binance testnet ready)
-# ---------------------------
-class BrokerManager:
-    def __init__(self, api_key, api_secret, testnet=True):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.base = 'https://testnet.binance.vision/api' if testnet else 'https://api.binance.com/api'
-
-    def _sign_payload(self, payload: dict) -> dict:
-        # deterministic order for signing
-        items = sorted(payload.items())
-        query_string = '&'.join([f"{k}={v}" for k, v in items])
-        signature = hmac.new(self.api_secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
-        payload['signature'] = signature
-        return payload
-
-    def place_order(self, symbol, side, type_, quantity, price=None):
-        ts = int(time.time() * 1000)
-        endpoint = f"{self.base}/v3/order"
-        payload = {'symbol': symbol, 'side': side, 'type': type_, 'quantity': quantity, 'timestamp': ts}
-        if price:
-            payload['price'] = price
-        payload = self._sign_payload(payload)
-        headers = {'X-MBX-APIKEY': self.api_key}
-        resp = requests.post(endpoint, headers=headers, params=payload, timeout=10)
-        return resp.json()
-
-    def account_balance(self):
-        ts = int(time.time() * 1000)
-        endpoint = f"{self.base}/v3/account"
-        payload = {'timestamp': ts}
-        payload = self._sign_payload(payload)
-        headers = {'X-MBX-APIKEY': self.api_key}
-        resp = requests.get(endpoint, headers=headers, params=payload, timeout=10)
-        return resp.json()
-
-# Create broker instance (safe even if keys empty)
-broker = BrokerManager(BINANCE_API_KEY, BINANCE_API_SECRET, BINANCE_TESTNET)
-# ---------- END PART 1 ----------
-# ---------- PART 2 (paste second, immediately after Part 1) ----------
-# ---------------------------
-# Routes - basic
-# ---------------------------
-@app.get('/')
-def root():
-    return {'status': 'ok', 'msg': 'server live'}
-
-@app.get('/admin/autologin')
+# ----------------------------
+# Auto Login
+# ----------------------------
+@app.get("/admin/autologin")
 def auto_login():
-    return {'status': 'success', 'message': 'Login successful', 'admin_token': ADMIN_TOKEN}
+    return {"status": "success", "message": "Auto login successful"}
 
-# ---------------------------
-# Admin panel (browser) - manage nav buttons, deploy blocks, cleanup
-# ---------------------------
-@app.get('/admin/panel', response_class=HTMLResponse)
-def admin_panel():
-    conn = db_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT id, position, label, route, ord FROM ui_nav_buttons ORDER BY ord ASC")
-    navs = cur.fetchall()
-    conn.close()
+# ----------------------------
+# Admin Panel UI
+# ----------------------------
+@app.get("/admin/panel", response_class=HTMLResponse)
+def admin_panel(request: Request):
+    return templates.TemplateResponse("admin.html", {"request": request})
 
-    rows_html = ''
-    for n in navs:
-        rows_html += (
-            "<tr>"
-            f"<td>{n[2]}</td><td>{n[1]}</td><td>{n[3]}</td>"
-            f"<td><form action='/admin/nav/delete' method='post' style='display:inline'>"
-            f"<input type='hidden' name='id' value='{n[0]}'/>"
-            "</form></td></tr>"
-        )
-
-    html = (
-        "<html><body style='font-family:Arial;padding:20px;'>"
-        "<h2>Admin Panel</h2>"
-        "<h3>Add Navigation Button</h3>"
-        "<form action='/admin/nav/add' method='post'>"
-        "<label>Position:</label>"
-        "<select name='position'>"
-        "<option value='header'>Header</option>"
-        "<option value='footer'>Footer</option>"
-        "</select><br>"
-        "<label>Label:</label><input name='label'/><br>"
-        "<label>Route (e.g. /reports):</label><input name='route' placeholder='/reports'/><br>"
-        "<label>Optional code (HTML) for route content (paste):</label><br>"
-        "<textarea name='code' rows='6' cols='80'></textarea><br>"
-        "<button type='submit'>Add Button</button>"
-        "</form>"
-
-        "<h3>Existing Nav Buttons</h3>"
-        "<table border='1' cellpadding='6'>"
-        "<tr><th>Label</th><th>Position</th><th>Route</th><th>Action</th></tr>"
-        f"{rows_html}"
-        "</table>"
-
-        "<h3>Deploy UI Block (category + code)</h3>"
-        "<form action='/code/deploy' method='post'>"
-        "<label>Category:</label><input name='category' placeholder='misc'/><br>"
-        "<label>Code:</label><br>"
-        "<textarea name='code' rows='10' cols='80'></textarea><br>"
-        "<button type='submit'>Deploy & Append</button>"
-        "</form>"
-
-        "<h3>Cleanup</h3>"
-        "<form action='/admin/cleanup' method='post'>"
-        "<label>Category (optional):</label><input name='category' placeholder='leave empty to remove all'/><br>"
-        "<button type='submit'>Cleanup</button>"
-        "</form>"
-
-        "<p><a href='/ui' target='_blank'>Open UI Preview</a></p>"
-        "</body></html>"
-    )
-    return HTMLResponse(html)
-
-@app.post('/admin/nav/add')
-async def admin_nav_add(request: Request):
-    form = await request.form()
-    token = form.get('token') or request.query_params.get('token')
-    require_admin(token)
-    position = form.get('position', 'footer')
-    label = form.get('label', 'Button')
-    route = form.get('route', '/')
-    code = form.get('code', '')
-    conn = db_conn()
-    cur = conn.cursor()
-    ordv = int(time.time())
-    nid = str(uuid.uuid4())
-    cur.execute('INSERT INTO ui_nav_buttons (id, position, label, route, ord, code) VALUES (?,?,?,?,?,?)',
-                (nid, position, label, route, ordv, code))
-    conn.commit()
-    conn.close()
-    return JSONResponse({'status': 'ok', 'id': nid})
-
-@app.post('/admin/nav/delete')
-async def admin_nav_delete(id: str = Form(...), token: Optional[str] = Form(None)):
-    require_admin(token)
-    conn = db_conn()
-    cur = conn.cursor()
-    cur.execute('DELETE FROM ui_nav_buttons WHERE id=?', (id,))
-    conn.commit()
-    conn.close()
-    return HTMLResponse('<html><body>Deleted. <a href="/admin/panel">Back</a></body></html>')
-
-# ---------------------------
-# Deploy / active / cleanup
-# ---------------------------
-@app.post('/code/deploy')
-async def code_deploy(request: Request):
-    form = await request.form()
-    token = form.get('token') or request.query_params.get('token')
-    require_admin(token)
-    category = form.get('category', 'misc')
-    code = form.get('code', '')
-    if not code:
-        raise HTTPException(400, 'code required')
-    if len(code.encode()) > MAX_CODE_BYTES:
-        raise HTTPException(400, 'code too large')
-    block_id = str(uuid.uuid4())
-    ts = now_ts()
-    conn = db_conn()
-    cur = conn.cursor()
-    cur.execute('INSERT INTO ui_blocks (id,category,code,created_at,approved) VALUES (?,?,?,?,1)',
-                (block_id, category, code, ts))
-    cur.execute('INSERT INTO deploy_history (id,block_id,action,detail,ts) VALUES (?,?,?,?,?)',
-                (str(uuid.uuid4()), block_id, 'deploy', json.dumps({'category': category}), ts))
-    conn.commit()
-    conn.close()
-    return JSONResponse({'status': 'ok', 'block_id': block_id})
-
-@app.get('/code/active')
-def code_active():
-    conn = db_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT category, code FROM ui_blocks WHERE approved=1 ORDER BY created_at")
-    rows = cur.fetchall()
-    conn.close()
-    if not rows:
-        return HTMLResponse('<h3>No UI Deployed</h3>')
-    html = ''
-    cats = {}
-    for cat, code in rows:
-        cats.setdefault(cat, []).append(code)
-    for cat, blocks in cats.items():
-        html += "<section><h2 style='margin-bottom:8px'>{}</h2>".format(cat.upper())
-        for b in blocks:
-            html += "<div style='margin-bottom:8px'>{}</div>".format(b)
-        html += '</section>'
-    return HTMLResponse(html)
-
-@app.post('/admin/cleanup')
-async def admin_cleanup(category: Optional[str] = Form(None), token: Optional[str] = Form(None)):
-    require_admin(token)
-    conn = db_conn()
-    cur = conn.cursor()
-    if category:
-        cur.execute('DELETE FROM ui_blocks WHERE category=?', (category,))
-        cur.execute('DELETE FROM deploy_history WHERE detail LIKE ?', (f"%{category}%",))
-    else:
-        cur.execute('DELETE FROM ui_blocks')
-        cur.execute('DELETE FROM deploy_history')
-    conn.commit()
-    conn.close()
-    return JSONResponse({'status': 'ok', 'category': category or 'ALL'})
-
-# ---------------------------
-# UI preview - renders header/footer from DB and middle content scrolls
-# ---------------------------
-@app.get('/ui', response_class=HTMLResponse)
-def ui_preview():
-    conn = db_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT position, label, route FROM ui_nav_buttons ORDER BY ord ASC")
-    navs = cur.fetchall()
-    conn.close()
-    header_buttons = [n for n in navs if n[0] == 'header']
-    footer_buttons = [n for n in navs if n[0] == 'footer']
-
-    if not header_buttons:
-        header_html = "<div class='nav-item'>Index</div><div class='nav-item'>Market</div><div class='nav-item'>Status</div>"
-    else:
-        header_html = ''.join(["<div class='nav-item' onclick=\"navigate('{}')\">{}</div>".format(n[2], n[1]) for n in header_buttons])
-    if not footer_buttons:
-        footer_html = ("<div class='nav-item' onclick=\"navigate('/home')\">Home</div>"
-                       "<div class='nav-item' onclick=\"navigate('/watchlist')\">Watchlist</div>"
-                       "<div class='nav-item' onclick=\"navigate('/orders')\">Orders</div>"
-                       "<div class='nav-item' onclick=\"navigate('/account')\">Account</div>"
-                       "<div class='nav-item' onclick=\"navigate('/admin/panel')\">Admin</div>")
-    else:
-        footer_html = ''.join(["<div class='nav-item' onclick=\"navigate('{}')\">{}</div>".format(n[2], n[1]) for n in footer_buttons])
-
-    # Build HTML by concatenation to avoid f-string braces issues
-    html = (
-        "<html><head><meta name='viewport' content='width=device-width,initial-scale=1' />"
-        "<style>"
-        "body {margin:0;font-family:Arial;background:#f4f6f8}"
-        ".header {position:fixed;top:0;left:0;right:0;height:70px;background:#0f172a;color:white;display:flex;align-items:center;justify-content:space-around;z-index:1000}"
-        ".header .nav-item {padding:8px 12px;cursor:pointer;font-size:16px}"
-        ".footer {position:fixed;bottom:0;left:0;right:0;height:70px;background:#0f172a;color:white;display:flex;align-items:center;justify-content:space-around;z-index:1000}"
-        ".footer .nav-item {padding:8px 12px;cursor:pointer;font-size:14px}"
-        ".middle {padding:90px 12px 90px 12px;height:calc(100vh - 160px);overflow:auto}"
-        ".card {background:white;border-radius:8px;padding:16px;margin-bottom:12px;box-shadow:0 2px 6px rgba(0,0,0,0.08)}"
-        "iframe {width:100%;border:none;min-height:400px}"
-        "</style></head><body>"
-        "<div class='header'>" + header_html + "</div>"
-        "<div class='middle'>"
-        "<div class='card'><h3>Live UI Blocks</h3><iframe src='/code/active'></iframe></div>"
-        "<div class='card'><h3>Market News</h3><p>Live news & signals will appear here.</p></div>"
-        "<div class='card'><h3>Quick Actions</h3>"
-        "<button onclick=\"fetch('/broker/balance').then(r=>r.json()).then(d=>alert(JSON.stringify(d)))\">Check Balance</button>"
-        "<button onclick=\"navigate('/admin/panel')\">Open Admin</button>"
-        "</div></div>"
-        "<div class='footer'>" + footer_html + "</div>"
-        "<script>"
-        "function navigate(path){"
-        "  if(!path) return;"
-        "  if(path.startsWith('http') || path.startsWith('/')){"
-        "    if(path.endsWith('.html') || path.startsWith('/admin')){ window.location.href = path; return; }"
-        "    window.open(path,'_self');"
-        "  }"
-        "}"
-        "</script></body></html>"
-    )
-    return HTMLResponse(html)
-
-# ---------------------------
-# Broker endpoints
-# ---------------------------
-@app.post('/broker/buy')
-async def broker_buy(symbol: str = Form(...), qty: float = Form(...), price: Optional[float] = Form(None), token: Optional[str] = Form(None)):
-    require_admin(token)
-    return broker.place_order(symbol=symbol, side='BUY', type_='MARKET' if not price else 'LIMIT', quantity=qty, price=price)
-
-@app.post('/broker/sell')
-async def broker_sell(symbol: str = Form(...), qty: float = Form(...), price: Optional[float] = Form(None), token: Optional[str] = Form(None)):
-    require_admin(token)
-    return broker.place_order(symbol=symbol, side='SELL', type_='MARKET' if not price else 'LIMIT', quantity=qty, price=price)
-
-@app.get('/broker/balance')
-def broker_balance(token: Optional[str] = None):
-    require_admin(token)
+# ----------------------------
+# Deploy New UI
+# ----------------------------
+@app.post("/code/deploy")
+async def code_deploy(category: str = Form(...), code: str = Form(...)):
     try:
-        return broker.account_balance()
-    except Exception as e:
-        return JSONResponse({'error': str(e)}, status_code=400)
-
-# ---------------------------
-# Status / simple logs
-# ---------------------------
-@app.get('/status')
-def status():
-    conn = db_conn()
-    cur = conn.cursor()
-    cur.execute('SELECT COUNT(*) FROM ui_blocks')
-    c = cur.fetchone()[0]
-    conn.close()
-    return {'status': 'ok', 'blocks': c, 'time': now_ts()}
-
-# ---------------------------
-# Exception handler (basic)
-# ---------------------------
-@app.exception_handler(Exception)
-async def global_exc(request: Request, exc: Exception):
-    # log exception to DB safely (parameterized)
-    try:
-        conn = db_conn()
+        conn = sqlite3.connect(DB_FILE)
         cur = conn.cursor()
-        cur.execute('INSERT INTO logs (ts, level, message) VALUES (?, ?, ?)', (now_ts(), 'ERROR', str(exc)))
+        cur.execute("INSERT INTO deployed_ui (category, code) VALUES (?, ?)", (category, code))
         conn.commit()
         conn.close()
-    except Exception:
+        return {"status": "approved", "msg": "UI deployed successfully"}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)}
+
+# ----------------------------
+# View Active UI
+# ----------------------------
+@app.get("/code/active/{category}", response_class=HTMLResponse)
+def get_active_code(category: str):
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT code FROM deployed_ui WHERE category=? ORDER BY id DESC LIMIT 1", (category,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return HTMLResponse(content=row[0])
+    else:
+        return HTMLResponse("<h3>No UI Deployed for this category</h3>")
+  # ----------------------------
+# Rollback (delete all UI of a category)
+# ----------------------------
+@app.post("/admin/rollback")
+async def rollback(category: str = Form(...)):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM deployed_ui WHERE category=?", (category,))
+        conn.commit()
+        conn.close()
+        return {"status": "ok", "msg": f"Rolled back all UI for category {category}"}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)}
+
+# ----------------------------
+# List Deployment History
+# ----------------------------
+@app.get("/admin/history")
+def get_history():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT id, category, created_at FROM deployed_ui ORDER BY id DESC LIMIT 50")
+    rows = cur.fetchall()
+    conn.close()
+    return {"status": "ok", "history": rows}
+
+# ----------------------------
+# Logs view
+# ----------------------------
+@app.get("/admin/logs")
+def get_logs():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT ts, level, message FROM logs ORDER BY id DESC LIMIT 100")
+    rows = cur.fetchall()
+    conn.close()
+    return {"status": "ok", "logs": rows}
+
+# ----------------------------
+# Broker Settings Save
+# ----------------------------
+@app.post("/broker/save")
+async def save_broker(
+    broker_name: str = Form(...),
+    api_key: str = Form(...),
+    api_secret: str = Form(...),
+    mode: str = Form("testnet")
+):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cur = conn.cursor()
+        cur.execute("INSERT INTO broker_settings (broker_name, api_key, api_secret, mode) VALUES (?, ?, ?, ?)",
+                    (broker_name, api_key, api_secret, mode))
+        conn.commit()
+        conn.close()
+        return {"status": "ok", "msg": "Broker settings saved"}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)}
+
+# ----------------------------
+# Broker Settings View
+# ----------------------------
+@app.get("/broker/settings")
+def view_broker():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT broker_name, mode, created_at FROM broker_settings ORDER BY id DESC LIMIT 1")
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return {"status": "ok", "broker": row}
+    else:
+        return {"status": "empty"}
+
+# ----------------------------
+# Global Exception Handler
+# ----------------------------
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cur = conn.cursor()
+        cur.execute("INSERT INTO logs (level, message) VALUES (?, ?)", ("ERROR", str(exc)))
+        conn.commit()
+        conn.close()
+    except:
         pass
-    return JSONResponse({'detail': 'internal error'}, status_code=500)
-# ---------- END PART 2 ----------
+    return JSONResponse(status_code=500, content={"status": "error", "msg": str(exc)})
+  
