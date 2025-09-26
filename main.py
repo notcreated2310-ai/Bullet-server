@@ -306,6 +306,11 @@ async def login(request: Request):
     else:
         return HTMLResponse("Invalid credentials", status_code=401)
 
+# Auto-login endpoint — do NOT change keys/response keys (App Inventor depends on exact output)
+@app.get("/admin/autologin")
+def auto_login():
+    return {"status": "success", "message": "Login successful"}
+
 # ------------------------------
 # Server Runner
 # ------------------------------
