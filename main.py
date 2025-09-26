@@ -197,3 +197,29 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
 
+from fastapi import Form
+
+@app.post("/add-component")
+async def add_component(
+    name: str = Form(...),
+    type: str = Form(...),
+    position: str = Form(...),
+    config: str = Form(...)
+):
+    conn = sqlite3.connect("app.db")
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS components (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            type TEXT,
+            position TEXT,
+            config TEXT
+        )
+    """)
+    cur.execute("INSERT INTO components (name, type, position, config) VALUES (?, ?, ?, ?)",
+                (name, type, position, config))
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "message": "Component added successfully"}
+    
