@@ -103,33 +103,6 @@ async def ui_page(request: Request):
     return templates.TemplateResponse("ui.html", {"request": request, "blocks": blocks})
 
 # ------------------------------
-# Routes - Authentication
-# ------------------------------
-@app.post("/login")
-async def login(username: str = Form(...), password: str = Form(...)):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT id, role FROM users WHERE username=? AND password=?", (username, password))
-    row = cur.fetchone()
-    conn.close()
-    if row:
-        log_event("login", f"{username} logged in")
-        return RedirectResponse(url="/admin", status_code=303)
-    return JSONResponse({"error": "Invalid credentials"}, status_code=401)
-
-@app.post("/register")
-async def register(username: str = Form(...), password: str = Form(...)):
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
-        conn.commit()
-        conn.close()
-        log_event("register", f"new user {username}")
-        return RedirectResponse(url="/", status_code=303)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-
 # ------------------------------
 # Routes - Admin
 # ------------------------------
@@ -210,102 +183,8 @@ async def init_admin():
             role TEXT
         )
     """)
-    # अगर पहले से admin है तो create नहीं होगा
-    cur.execute("INSERT OR IGNORE INTO users (username, password, role) VALUES (?, ?, ?)",
-                ("admin", "admin123", "superadmin"))
-    conn.commit()
-    conn.close()
-    return {"status": "ok", "message": "Default admin created → username: admin / password: admin123"}
-
-from fastapi.responses import RedirectResponse
 
 # -----------------------
-# Login Form (UI)
-# -----------------------
-@app.get("/login", response_class=HTMLResponse)
-async def login_form():
-    return """
-    <html>
-    <head>
-        <title>Login</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: linear-gradient(to right, #2c3e50, #3498db);
-                height: 100vh;
-                margin: 0;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .card {
-                background: white;
-                padding: 40px;
-                border-radius: 12px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                width: 350px;
-                text-align: center;
-            }
-            h2 {
-                margin-bottom: 20px;
-                color: #333;
-            }
-            input[type="text"], input[type="password"] {
-                width: 100%;
-                padding: 12px;
-                margin: 10px 0;
-                border: 1px solid #ccc;
-                border-radius: 8px;
-            }
-            button {
-                width: 100%;
-                padding: 12px;
-                background: #3498db;
-                color: white;
-                font-size: 16px;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-            }
-            button:hover {
-                background: #2980b9;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <h2>🔑 Secure Login</h2>
-            <form method="post" action="/login">
-                <input type="text" name="username" placeholder="Username" required><br>
-                <input type="password" name="password" placeholder="Password" required><br>
-                <button type="submit">Login</button>
-            </form>
-        </div>
-    </body>
-    </html>
-    """
-
-# -----------------------
-# Login Action (POST)
-# -----------------------
-@app.post("/login")
-async def login(request: Request):
-    form = await request.form()
-    username = form.get("username")
-    password = form.get("password")
-
-    conn = sqlite3.connect("app.db")
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
-    user = cur.fetchone()
-    conn.close()
-
-    if user:
-        request.session["user"] = {"id": user[0], "username": user[1], "role": user[3]}
-        return RedirectResponse(url="/admin", status_code=302)
-    else:
-        return HTMLResponse("Invalid credentials", status_code=401)
-
 # Auto-login endpoint — do NOT change keys/response keys (App Inventor depends on exact output)
 @app.get("/admin/autologin")
 def auto_login():
