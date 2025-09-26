@@ -196,6 +196,27 @@ async def run_code(code: str = Form(...)):
         log_event("run_code_error", str(e))
         return {"error": str(e), "trace": traceback.format_exc()}
 
+import sqlite3
+
+@app.get("/init-admin")
+async def init_admin():
+    conn = sqlite3.connect("app.db")
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT,
+            role TEXT
+        )
+    """)
+    # अगर पहले से admin है तो create नहीं होगा
+    cur.execute("INSERT OR IGNORE INTO users (username, password, role) VALUES (?, ?, ?)",
+                ("admin", "admin123", "superadmin"))
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "message": "Default admin created → username: admin / password: admin123"}
+    
 # ------------------------------
 # Server Runner
 # ------------------------------
