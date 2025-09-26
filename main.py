@@ -212,10 +212,10 @@ async def init_admin():
     """)
     # अगर पहले से admin है तो create नहीं होगा
     cur.execute("INSERT OR IGNORE INTO users (username, password, role) VALUES (?, ?, ?)",
-                ("admin", "admin123", "superadmin"))
+                ("admin", "4039", "superadmin"))
     conn.commit()
     conn.close()
-    return {"status": "ok", "message": "Default admin created → username: admin / password: admin123"}
+    return {"status": "ok", "message": "Default admin created → username: admin / password: 4039"}
     
 # ------------------------------
 # Server Runner
