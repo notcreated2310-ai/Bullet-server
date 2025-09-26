@@ -106,6 +106,10 @@ async def init_admin():
 @app.get("/ping")
 async def ping():
     return {"message": "pong"}
-
+    
+@app.get("/admin/autologin")
+def auto_login():
+    return {"status": "success", "message": "Login successful"}
+    
 # Auto-login always ON → /admin direct open
 # (No login form required)
