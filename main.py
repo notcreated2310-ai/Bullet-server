@@ -289,21 +289,23 @@ async def login_form():
 # Login Action (POST)
 # -----------------------
 @app.post("/login")
-async def login_action(username: str = Form(...), password: str = Form(...)):
-    import sqlite3
+async def login(request: Request):
+    form = await request.form()
+    username = form.get("username")
+    password = form.get("password")
+
     conn = sqlite3.connect("app.db")
     cur = conn.cursor()
-    cur.execute("SELECT role FROM users WHERE username=? AND password=?", (username, password))
-    row = cur.fetchone()
+    cur.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+    user = cur.fetchone()
     conn.close()
 
-    if row:
-        role = row[0]
-        # ✅ Redirect to Admin Panel after success
-        return RedirectResponse(url="/admin", status_code=303)
+    if user:
+        request.session["user"] = {"id": user[0], "username": user[1], "role": user[3]}
+        return RedirectResponse(url="/admin", status_code=302)
     else:
-        return JSONResponse({"status": "error", "message": "Invalid credentials"})
-    
+        return HTMLResponse("Invalid credentials", status_code=401)
+
 # ------------------------------
 # Server Runner
 # ------------------------------
