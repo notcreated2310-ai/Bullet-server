@@ -216,6 +216,93 @@ async def init_admin():
     conn.commit()
     conn.close()
     return {"status": "ok", "message": "Default admin created → username: admin / password: 4039"}
+
+from fastapi.responses import RedirectResponse
+
+# -----------------------
+# Login Form (UI)
+# -----------------------
+@app.get("/login", response_class=HTMLResponse)
+async def login_form():
+    return """
+    <html>
+    <head>
+        <title>Login</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background: linear-gradient(to right, #2c3e50, #3498db);
+                height: 100vh;
+                margin: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .card {
+                background: white;
+                padding: 40px;
+                border-radius: 12px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                width: 350px;
+                text-align: center;
+            }
+            h2 {
+                margin-bottom: 20px;
+                color: #333;
+            }
+            input[type="text"], input[type="password"] {
+                width: 100%;
+                padding: 12px;
+                margin: 10px 0;
+                border: 1px solid #ccc;
+                border-radius: 8px;
+            }
+            button {
+                width: 100%;
+                padding: 12px;
+                background: #3498db;
+                color: white;
+                font-size: 16px;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+            }
+            button:hover {
+                background: #2980b9;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h2>🔑 Secure Login</h2>
+            <form method="post" action="/login">
+                <input type="text" name="username" placeholder="Username" required><br>
+                <input type="password" name="password" placeholder="Password" required><br>
+                <button type="submit">Login</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+
+# -----------------------
+# Login Action (POST)
+# -----------------------
+@app.post("/login")
+async def login_action(username: str = Form(...), password: str = Form(...)):
+    import sqlite3
+    conn = sqlite3.connect("app.db")
+    cur = conn.cursor()
+    cur.execute("SELECT role FROM users WHERE username=? AND password=?", (username, password))
+    row = cur.fetchone()
+    conn.close()
+
+    if row:
+        role = row[0]
+        # ✅ Redirect to Admin Panel after success
+        return RedirectResponse(url="/admin", status_code=303)
+    else:
+        return JSONResponse({"status": "error", "message": "Invalid credentials"})
     
 # ------------------------------
 # Server Runner
